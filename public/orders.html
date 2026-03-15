@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Orders – Meecart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #2d6a4f;
+      --green-light: #52b788;
+      --green-pale: #d8f3dc;
+      --cream: #f9f5f0;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --border: #e5e0d8;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--text); }
+    nav {
+      background: white;
+      position: sticky; top: 0; z-index: 100;
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .nav-logo { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--green); text-decoration: none; }
+    .nav-btn { padding: 8px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; text-decoration: none; border: none; background: none; color: var(--muted); }
+    .nav-btn:hover { color: var(--text); }
+
+    .page { max-width: 600px; margin: 0 auto; padding: 24px; }
+    .page-title { font-family: 'DM Serif Display', serif; font-size: 28px; margin-bottom: 24px; }
+
+    .order-card {
+      background: white;
+      border-radius: 16px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    .order-header {
+      padding: 18px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .order-id { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .order-date { font-size: 12px; color: var(--muted); }
+    .order-total { font-size: 18px; font-weight: 700; color: var(--green); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-confirmed { background: #dbeafe; color: #1e40af; }
+    .status-packing { background: #ede9fe; color: #5b21b6; }
+    .status-out_for_delivery { background: #ffedd5; color: #9a3412; }
+    .status-delivered { background: var(--green-pale); color: var(--green); }
+    .status-cancelled { background: #fee2e2; color: #991b1b; }
+
+    .status-icon { font-size: 14px; }
+
+    .order-timeline {
+      padding: 16px 20px;
+      display: none;
+    }
+
+    .order-timeline.expanded { display: block; }
+
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 16px;
+    }
+
+    .timeline-step {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      position: relative;
+    }
+
+    .timeline-step:not(:last-child) .step-line {
+      position: absolute;
+      left: 11px;
+      top: 26px;
+      width: 2px;
+      height: calc(100% + 0px);
+      background: var(--border);
+    }
+
+    .timeline-step.done .step-line { background: var(--green-light); }
+
+    .step-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      margin-top: 2px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .timeline-step.done .step-dot { background: var(--green); color: white; }
+    .timeline-step.active .step-dot { background: var(--green-light); color: white; box-shadow: 0 0 0 3px var(--green-pale); }
+
+    .step-content { padding-bottom: 20px; }
+    .step-label { font-size: 14px; font-weight: 600; }
+    .step-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .order-items-list { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+    .order-item-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 14px;
+    }
+
+    .order-item-emoji { font-size: 20px; }
+    .order-item-name { flex: 1; }
+    .order-item-qty { color: var(--muted); }
+    .order-item-price { font-weight: 600; }
+
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
+    .empty-icon { font-size: 64px; display: block; margin-bottom: 16px; }
+    .shop-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 14px 28px;
+      background: var(--green);
+      color: white;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .loading { text-align: center; padding: 60px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/">🛒 Meecart</a>
+  <div style="display:flex;gap:12px">
+    <a href="/" class="nav-btn">← Shop</a>
+    <button class="nav-btn" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div class="page">
+  <h1 class="page-title">My Orders</h1>
+  <div id="ordersContainer"><div class="loading">Loading your orders… 🌿</div></div>
+</div>
+
+<script>
+  const API = '';
+  const token = localStorage.getItem('meecart_token');
+
+  if (!token) window.location.href = '/login.html';
+
+  function logout() {
+    localStorage.removeItem('meecart_token');
+    localStorage.removeItem('meecart_user');
+    window.location.href = '/login.html';
+  }
+
+  const STATUS_CONFIG = {
+    pending:          { label: 'Order Placed',        icon: '📋', desc: 'We received your order' },
+    confirmed:        { label: 'Confirmed',           icon: '✅', desc: 'Order confirmed by store' },
+    packing:          { label: 'Being Packed',        icon: '📦', desc: 'Your veggies are being packed' },
+    out_for_delivery: { label: 'Out for Delivery',    icon: '🛵', desc: 'On the way to you' },
+    delivered:        { label: 'Delivered',           icon: '🎉', desc: 'Delivered. Pay cash.' },
+    cancelled:        { label: 'Cancelled',           icon: '❌', desc: 'This order was cancelled' },
+  };
+
+  const TIMELINE_STEPS = ['pending', 'confirmed', 'packing', 'out_for_delivery', 'delivered'];
+
+  function stepIndex(status) { return TIMELINE_STEPS.indexOf(status); }
+
+  async function loadOrders() {
+    try {
+      const res = await fetch(`${API}/api/orders/my`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed');
+      const orders = await res.json();
+      renderOrders(orders);
+    } catch {
+      document.getElementById('ordersContainer').innerHTML = '<div class="loading">Failed to load orders.</div>';
+    }
+  }
+
+  function renderOrders(orders) {
+    const container = document.getElementById('ordersContainer');
+
+    if (!orders.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-icon">🛒</span>
+          <p>No orders yet!</p>
+          <a href="/" class="shop-link">Start Shopping →</a>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = orders.map(o => {
+      const cfg = STATUS_CONFIG[o.status] || STATUS_CONFIG.pending;
+      const date = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      return `
+        <div class="order-card">
+          <div class="order-header" onclick="toggleOrder(${o.id})">
+            <div>
+              <div class="order-id">Order #${o.id}</div>
+              <div class="order-date">${date} · ${o.item_count} item(s)</div>
+              <div class="status-badge status-${o.status}">
+                <span class="status-icon">${cfg.icon}</span> ${cfg.label}
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div class="order-total">₹${o.total}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">💵 Cash on Delivery</div>
+            </div>
+          </div>
+          <div class="order-timeline" id="timeline-${o.id}">
+            <div class="timeline" id="steps-${o.id}"></div>
+            <div class="order-items-list" id="items-${o.id}">
+              <div style="color:var(--muted);font-size:13px;padding:8px 0">Loading items…</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function toggleOrder(id) {
+    const timeline = document.getElementById(`timeline-${id}`);
+    const isOpen = timeline.classList.contains('expanded');
+
+    if (isOpen) { timeline.classList.remove('expanded'); return; }
+
+    timeline.classList.add('expanded');
+
+    // Load full order
+    try {
+      const res = await fetch(`${API}/api/orders/my/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const order = await res.json();
+      renderTimeline(id, order.status);
+      renderItems(id, order.items);
+    } catch {
+      document.getElementById(`items-${id}`).innerHTML = '<p style="color:red;font-size:13px">Failed to load order details.</p>';
+    }
+  }
+
+  function renderTimeline(orderId, currentStatus) {
+    const idx = stepIndex(currentStatus);
+    const stepsEl = document.getElementById(`steps-${orderId}`);
+
+    if (currentStatus === 'cancelled') {
+      stepsEl.innerHTML = `
+        <div class="timeline-step active">
+          <div class="step-dot">❌</div>
+          <div class="step-content">
+            <div class="step-label">Order Cancelled</div>
+            <div class="step-desc">This order was cancelled</div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    stepsEl.innerHTML = TIMELINE_STEPS.map((step, i) => {
+      const cfg = STATUS_CONFIG[step];
+      const isDone = i < idx;
+      const isActive = i === idx;
+      return `
+        <div class="timeline-step ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}">
+          <div class="step-dot">${isDone ? '✓' : isActive ? cfg.icon : ''}</div>
+          <div class="step-line"></div>
+          <div class="step-content">
+            <div class="step-label">${cfg.label}</div>
+            <div class="step-desc">${cfg.desc}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderItems(orderId, items) {
+    const el = document.getElementById(`items-${orderId}`);
+    el.innerHTML = items.map(item => `
+      <div class="order-item-row">
+        <span class="order-item-emoji">${item.image_emoji}</span>
+        <span class="order-item-name">${item.name}</span>
+        <span class="order-item-qty">×${item.quantity} ${item.unit}</span>
+        <span class="order-item-price">₹${(item.price * item.quantity).toFixed(0)}</span>
+      </div>`).join('');
+  }
+
+  loadOrders();
+</script>
+</body>
+</html>
