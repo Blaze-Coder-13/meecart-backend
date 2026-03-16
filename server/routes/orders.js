@@ -17,8 +17,14 @@ router.post('/', authMiddleware, (req, res) => {
 
   const db = getDb();
 
+  // Get settings
+  const settings = {};
+  db.prepare('SELECT key, value FROM settings').all().forEach(s => settings[s.key] = s.value);
+  const FREE_DELIVERY_ABOVE = Number(settings.free_delivery_above || 150);
+  const DELIVERY_CHARGE = Number(settings.delivery_charges || 30);
+
   // Validate products and compute total
-  let total = 0;
+  let subtotal = 0;
   const validatedItems = [];
 
   for (const item of items) {
@@ -31,16 +37,19 @@ router.post('/', authMiddleware, (req, res) => {
     }
 
     const lineTotal = product.price * item.quantity;
-    total += lineTotal;
+    subtotal += lineTotal;
     validatedItems.push({ product, quantity: item.quantity, price: product.price, lineTotal });
   }
+
+  const deliveryCharges = subtotal >= FREE_DELIVERY_ABOVE ? 0 : DELIVERY_CHARGE;
+  const total = subtotal + deliveryCharges;
 
   // Create order in a transaction
   const createOrder = db.transaction(() => {
     const orderResult = db.prepare(`
-      INSERT INTO orders (user_id, total, address, notes, payment_method, status)
-      VALUES (?, ?, ?, ?, 'cod', 'pending')
-    `).run(req.user.id, total, address.trim(), notes || null);
+      INSERT INTO orders (user_id, subtotal, delivery_charges, discount, total, address, notes, payment_method, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'cod', 'pending')
+    `).run(req.user.id, subtotal, deliveryCharges, 0, total, address.trim(), notes || null);
 
     const orderId = orderResult.lastInsertRowid;
 
@@ -80,7 +89,6 @@ router.get('/my/:id', authMiddleware, (req, res) => {
   const db = getDb();
   const order = db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
-
   res.json(getOrderWithItems(db, order.id));
 });
 
@@ -94,7 +102,8 @@ router.get('/', adminMiddleware, (req, res) => {
   const offset = (page - 1) * limit;
 
   let query = `
-    SELECT o.*, u.phone, u.name as customer_name, COUNT(oi.id) as item_count
+    SELECT o.*, u.phone, u.name as customer_name, u.address as customer_address,
+           COUNT(oi.id) as item_count
     FROM orders o
     JOIN users u ON o.user_id = u.id
     LEFT JOIN order_items oi ON o.id = oi.order_id
@@ -110,7 +119,6 @@ router.get('/', adminMiddleware, (req, res) => {
   params.push(limit, offset);
 
   const orders = db.prepare(query).all(...params);
-
   const total = db.prepare(`SELECT COUNT(*) as c FROM orders ${status ? 'WHERE status = ?' : ''}`).get(...(status ? [status] : [])).c;
 
   res.json({ orders, total, page: Number(page), pages: Math.ceil(total / limit) });
@@ -119,7 +127,12 @@ router.get('/', adminMiddleware, (req, res) => {
 // GET /api/orders/:id (admin)
 router.get('/:id', adminMiddleware, (req, res) => {
   const db = getDb();
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  const order = db.prepare(`
+    SELECT o.*, u.phone, u.name as customer_name, u.address as customer_address
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    WHERE o.id = ?
+  `).get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
   res.json(getOrderWithItems(db, order.id));
 });
@@ -134,8 +147,6 @@ router.put('/:id/status', adminMiddleware, (req, res) => {
   }
 
   const db = getDb();
-
-  // If delivered, mark payment as received (COD)
   const paymentStatus = status === 'delivered' ? 'paid' : undefined;
 
   let query = 'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP';
@@ -155,33 +166,22 @@ router.put('/:id/status', adminMiddleware, (req, res) => {
   res.json(order);
 });
 
-// GET /api/orders/admin/stats (admin)
-router.get('/admin/stats', adminMiddleware, (req, res) => {
-  const db = getDb();
-
-  const stats = {
-    total_orders: db.prepare('SELECT COUNT(*) as c FROM orders').get().c,
-    pending: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'pending'").get().c,
-    confirmed: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'confirmed'").get().c,
-    out_for_delivery: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'out_for_delivery'").get().c,
-    delivered: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'delivered'").get().c,
-    cancelled: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'cancelled'").get().c,
-    total_revenue: db.prepare("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status = 'delivered'").get().s,
-    today_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at) = date('now')").get().c,
-  };
-
-  res.json(stats);
-});
-
 // Helper: get full order with items
 function getOrderWithItems(db, orderId) {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  const order = db.prepare(`
+    SELECT o.*, u.phone, u.name as customer_name
+    FROM orders o
+    LEFT JOIN users u ON o.user_id = u.id
+    WHERE o.id = ?
+  `).get(orderId);
+
   const items = db.prepare(`
     SELECT oi.*, p.name, p.image_emoji, p.unit
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     WHERE oi.order_id = ?
   `).all(orderId);
+
   return { ...order, items };
 }
 

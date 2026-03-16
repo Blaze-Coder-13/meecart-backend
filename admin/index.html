@@ -571,14 +571,15 @@
     document.getElementById('ordersTable').innerHTML = `
       <table>
         <thead><tr>
-          <th>ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Date</th><th>Action</th>
+          <th>ID</th><th>Customer</th><th>Address</th><th>Items</th><th>Total</th><th>Status</th><th>Date</th><th>Action</th>
         </tr></thead>
         <tbody>
           ${data.orders.map(o => `
             <tr>
               <td><strong>#${o.id}</strong></td>
-              <td>${o.customer_name || ''}<br><span style="color:var(--muted);font-size:12px">${o.phone}</span></td>
-              <td>${o.item_count}</td>
+<td>${o.customer_name || ''}<br><span style="color:var(--muted)">${o.phone}</span></td>
+<td style="max-width:150px;font-size:12px">${o.address || '—'}</td>
+<td>${o.item_count}</td>
               <td><strong>₹${o.total}</strong></td>
               <td>
                 <select class="status-select" onchange="updateStatus(${o.id}, this.value)">
@@ -606,8 +607,108 @@
   async function viewOrder(id) {
     const res = await fetch(`${API}/api/orders/${id}`, { headers: headers() });
     const o = await res.json();
-    const items = o.items.map(i => `${i.image_emoji} ${i.name} ×${i.quantity} ${i.unit} = ₹${(i.price*i.quantity).toFixed(0)}`).join('\n');
-    alert(`Order #${id}\nStatus: ${o.status}\nTotal: ₹${o.total}\nAddress: ${o.address}\n\nItems:\n${items}`);
+    const user = await fetch(`${API}/api/admin/users`, { headers: headers() });
+    
+    const win = window.open('', '_blank');
+    win.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Order #${o.id} - Meecart</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 40px; color: #1a1a1a; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; border-bottom: 2px solid #2d6a4f; padding-bottom: 16px; }
+    .logo { font-size: 24px; font-weight: 800; color: #2d6a4f; }
+    .print-btn { background: #2d6a4f; color: white; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .print-btn:hover { background: #1b4332; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 13px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .info-row { display: flex; margin-bottom: 8px; }
+    .info-label { width: 160px; font-weight: 600; color: #6b7280; font-size: 14px; }
+    .info-value { flex: 1; font-size: 14px; color: #1a1a1a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { background: #f9f5f0; padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #e5e0d8; }
+    td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #f5f0ea; }
+    .total-section { margin-top: 24px; border-top: 2px solid #e5e0d8; padding-top: 16px; }
+    .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+    .total-row.final { font-size: 18px; font-weight: 800; color: #2d6a4f; border-top: 1px solid #e5e0d8; padding-top: 10px; margin-top: 4px; }
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; background: #d8f3dc; color: #2d6a4f; }
+    .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e0d8; padding-top: 16px; }
+    @media print {
+      .print-btn { display: none; }
+      body { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="logo">🛒 Meecart</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px">Order Invoice</div>
+    </div>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
+    <div class="section">
+      <div class="section-title">Customer Details</div>
+      <div class="info-row"><span class="info-label">Customer Name</span><span class="info-value">${o.customer_name || '—'}</span></div>
+      <div class="info-row"><span class="info-label">Mobile Number</span><span class="info-value">${o.phone || '—'}</span></div>
+      <div class="info-row"><span class="info-label">Delivery Address</span><span class="info-value">${o.address || '—'}</span></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Order Details</div>
+      <div class="info-row"><span class="info-label">Order Date</span><span class="info-value">${new Date(o.created_at).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'})}</span></div>
+      <div class="info-row"><span class="info-label">Payment</span><span class="info-value">Cash on Delivery</span></div>
+      <div class="info-row"><span class="info-label">Status</span><span class="info-value"><span class="status-badge">${o.status.replace(/_/g,' ')}</span></span></div>
+      ${o.notes ? `<div class="info-row"><span class="info-label">Instructions</span><span class="info-value">${o.notes}</span></div>` : ''}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Product Info</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Product ID</th>
+          <th>Name</th>
+          <th>MRP</th>
+          <th>Price</th>
+          <th>Quantity</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${o.items.map(i => `
+          <tr>
+            <td>${i.product_id}</td>
+            <td>${i.image_emoji} ${i.name}</td>
+            <td>₹${i.price}</td>
+            <td>₹${i.price}</td>
+            <td>${i.quantity} ${i.unit}</td>
+            <td>₹${(i.price * i.quantity).toFixed(0)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="total-section">
+    <div class="total-row"><span>Subtotal</span><span>₹${o.subtotal || o.total}</span></div>
+    <div class="total-row"><span>Discount Amount</span><span>₹${o.discount || 0}</span></div>
+    <div class="total-row"><span>Delivery Charges</span><span>${(o.delivery_charges || 0) === 0 ? '₹0 (Free)' : '₹' + o.delivery_charges}</span></div>
+    <div class="total-row final"><span>Total Amount</span><span>₹${o.total}</span></div>
+  </div>
+
+  <div class="footer">
+    <p>Thank you for shopping with Meecart!</p>
+    <p style="margin-top:4px">Fresh vegetables delivered daily</p>
+  </div>
+</body>
+</html>
+    `);
+    win.document.close();
   }
 
   // PRODUCTS
