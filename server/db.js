@@ -22,6 +22,9 @@ function initSchema() {
       phone TEXT UNIQUE NOT NULL,
       name TEXT,
       address TEXT,
+      password TEXT,
+      referral_code TEXT,
+      referred_by TEXT,
       role TEXT DEFAULT 'customer',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -30,6 +33,7 @@ function initSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       phone TEXT NOT NULL,
       code TEXT NOT NULL,
+      purpose TEXT DEFAULT 'signup',
       expires_at DATETIME NOT NULL,
       used INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -38,7 +42,9 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      icon TEXT DEFAULT '🥦'
+      icon TEXT DEFAULT '🥦',
+      image_url TEXT,
+      active INTEGER DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS products (
@@ -50,6 +56,7 @@ function initSchema() {
       stock INTEGER DEFAULT 100,
       category_id INTEGER,
       image_emoji TEXT DEFAULT '🥦',
+      image_url TEXT,
       active INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id)
@@ -59,11 +66,15 @@ function initSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       status TEXT DEFAULT 'pending',
+      subtotal REAL NOT NULL DEFAULT 0,
+      delivery_charges REAL NOT NULL DEFAULT 0,
+      discount REAL NOT NULL DEFAULT 0,
       total REAL NOT NULL,
       address TEXT NOT NULL,
       notes TEXT,
       payment_method TEXT DEFAULT 'cod',
       payment_status TEXT DEFAULT 'pending',
+      delivery_date TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -78,14 +89,59 @@ function initSchema() {
       FOREIGN KEY (order_id) REFERENCES orders(id),
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS banners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      image_url TEXT,
+      product_id INTEGER,
+      active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
+  migrateSchema();
   seedData();
+}
+
+function migrateSchema() {
+  // Add new columns to existing tables safely
+  const migrations = [
+    "ALTER TABLE users ADD COLUMN password TEXT",
+    "ALTER TABLE users ADD COLUMN referral_code TEXT",
+    "ALTER TABLE users ADD COLUMN referred_by TEXT",
+    "ALTER TABLE categories ADD COLUMN image_url TEXT",
+    "ALTER TABLE categories ADD COLUMN active INTEGER DEFAULT 1",
+    "ALTER TABLE products ADD COLUMN image_url TEXT",
+    "ALTER TABLE orders ADD COLUMN subtotal REAL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN delivery_charges REAL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN discount REAL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN delivery_date TEXT",
+    "ALTER TABLE otp_codes ADD COLUMN purpose TEXT DEFAULT 'signup'",
+  ];
+
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch {}
+  }
+}
+
+function generateReferralCode(phone) {
+  return 'MC' + phone.slice(-4) + Math.random().toString(36).substring(2, 5).toUpperCase();
 }
 
 function seedData() {
   const categoryCount = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
-  if (categoryCount > 0) return;
+  if (categoryCount > 0) {
+    seedSettings();
+    return;
+  }
 
   // Seed categories
   const insertCat = db.prepare('INSERT INTO categories (name, icon) VALUES (?, ?)');
@@ -136,13 +192,22 @@ function seedData() {
     db.prepare("INSERT INTO users (phone, name, role) VALUES ('9999999999', 'Admin', 'admin')").run();
   }
 
-  console.log('✅ Database seeded with categories and products');
+  seedSettings();
+  console.log('✅ Database seeded');
 }
 
-// For direct execution: node server/db.js
-if (require.main === module) {
-  getDb();
-  console.log('Database initialized at', DB_PATH);
+function seedSettings() {
+  const settingsData = [
+    ['min_order_value', '150'],
+    ['delivery_charges', '30'],
+    ['free_delivery_above', '150'],
+    ['delivery_message', 'Add ₹{amount} more for free delivery!'],
+    ['delivery_time', '7:00 AM - 12:00 PM'],
+    ['delivery_days', 'Monday to Saturday'],
+  ];
+
+  const insert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  settingsData.forEach(s => insert.run(...s));
 }
 
-module.exports = { getDb };
+module.exports = { getDb, generateReferralCode };
