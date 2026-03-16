@@ -23,7 +23,6 @@ router.get('/users', adminMiddleware, (req, res) => {
   `).all(limit, offset);
 
   const total = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'customer'").get().c;
-
   res.json({ users, total });
 });
 
@@ -41,7 +40,7 @@ router.get('/dashboard', adminMiddleware, (req, res) => {
     total_customers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='customer'").get().c,
     total_products: db.prepare('SELECT COUNT(*) as c FROM products WHERE active=1').get().c,
     recent_orders: db.prepare(`
-      SELECT o.id, o.status, o.total, o.created_at, u.phone, u.name as customer_name
+      SELECT o.id, o.status, o.total, o.created_at, u.phone, u.name as customer_name, u.address as customer_address
       FROM orders o JOIN users u ON o.user_id = u.id
       ORDER BY o.created_at DESC LIMIT 10
     `).all(),
@@ -53,6 +52,97 @@ router.get('/dashboard', adminMiddleware, (req, res) => {
   };
 
   res.json(stats);
+});
+
+// ── CATEGORIES ────────────────────────────────────────
+
+// POST /api/admin/categories
+router.post('/categories', adminMiddleware, (req, res) => {
+  const { name, icon } = req.body;
+  if (!name) return res.status(400).json({ error: 'Category name required' });
+
+  const db = getDb();
+  const result = db.prepare('INSERT INTO categories (name, icon) VALUES (?, ?)').run(name, icon || '🥦');
+  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json(category);
+});
+
+// PUT /api/admin/categories/:id
+router.put('/categories/:id', adminMiddleware, (req, res) => {
+  const { name, icon, active } = req.body;
+  const db = getDb();
+
+  const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Category not found' });
+
+  db.prepare('UPDATE categories SET name = COALESCE(?, name), icon = COALESCE(?, icon), active = COALESCE(?, active) WHERE id = ?')
+    .run(name || null, icon || null, active !== undefined ? active : null, req.params.id);
+
+  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  res.json(category);
+});
+
+// DELETE /api/admin/categories/:id
+router.delete('/categories/:id', adminMiddleware, (req, res) => {
+  const db = getDb();
+  db.prepare('UPDATE categories SET active = 0 WHERE id = ?').run(req.params.id);
+  db.prepare('UPDATE products SET active = 0 WHERE category_id = ?').run(req.params.id);
+  res.json({ message: 'Category deleted' });
+});
+
+// ── SETTINGS ──────────────────────────────────────────
+
+// GET /api/admin/settings
+router.get('/settings', adminMiddleware, (req, res) => {
+  const db = getDb();
+  const settings = db.prepare('SELECT key, value FROM settings').all();
+  const result = {};
+  settings.forEach(s => result[s.key] = s.value);
+  res.json(result);
+});
+
+// PUT /api/admin/settings
+router.put('/settings', adminMiddleware, (req, res) => {
+  const db = getDb();
+  const updates = req.body;
+
+  const update = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+
+  const updateMany = db.transaction((data) => {
+    for (const [key, value] of Object.entries(data)) {
+      update.run(key, String(value));
+    }
+  });
+
+  updateMany(updates);
+  res.json({ message: 'Settings updated' });
+});
+
+// ── BANNERS ───────────────────────────────────────────
+
+// GET /api/admin/banners
+router.get('/banners', adminMiddleware, (req, res) => {
+  const db = getDb();
+  const banners = db.prepare('SELECT * FROM banners ORDER BY created_at DESC').all();
+  res.json(banners);
+});
+
+// POST /api/admin/banners
+router.post('/banners', adminMiddleware, (req, res) => {
+  const { title, image_url, product_id } = req.body;
+  if (!title) return res.status(400).json({ error: 'Banner title required' });
+
+  const db = getDb();
+  const result = db.prepare('INSERT INTO banners (title, image_url, product_id) VALUES (?, ?, ?)').run(title, image_url || null, product_id || null);
+  const banner = db.prepare('SELECT * FROM banners WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json(banner);
+});
+
+// DELETE /api/admin/banners/:id
+router.delete('/banners/:id', adminMiddleware, (req, res) => {
+  const db = getDb();
+  db.prepare('DELETE FROM banners WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Banner deleted' });
 });
 
 module.exports = router;

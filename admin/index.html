@@ -290,6 +290,9 @@
     <div class="nav-item" onclick="showSection('orders')" id="nav-orders">
       <span class="nav-icon">📦</span> Orders <span class="badge-count" id="pendingBadge" style="display:none"></span>
     </div>
+    <div class="nav-item" onclick="showSection('categories')">
+      <span class="nav-icon">🏷️</span> Categories
+    </div>
     <div class="nav-item" onclick="showSection('products')">
       <span class="nav-icon">🥦</span> Products
     </div>
@@ -345,6 +348,36 @@
           </div>
         </div>
         <div id="ordersTable"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+<!-- CATEGORIES -->
+    <div class="page-section" id="section-categories">
+      <div class="panel" style="margin-bottom:24px">
+        <div class="panel-header">
+          <div class="panel-title">Add New Category</div>
+        </div>
+        <div style="padding:24px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Category Name *</label>
+              <input class="form-input" id="catName" placeholder="e.g. Leafy Greens" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Emoji Icon</label>
+              <input class="form-input" id="catIcon" placeholder="🥬" />
+            </div>
+            <div class="form-group full">
+              <button class="action-btn primary" onclick="addCategory()">+ Add Category</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">All Categories</div>
+        </div>
+        <div id="categoriesTable"><div class="loading">Loading…</div></div>
       </div>
     </div>
 
@@ -447,6 +480,7 @@
 
     if (name === 'dashboard') loadDashboard();
     if (name === 'orders') loadOrders();
+    if (name === 'categories') loadCategories();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
   }
@@ -650,6 +684,72 @@
     await fetch(`${API}/api/products/${id}`, { method: 'DELETE', headers: headers() });
     showToast(`${name} removed`);
     loadProducts();
+  }
+
+// CATEGORIES
+  async function loadCategories() {
+    const res = await fetch(`${API}/api/products/categories`, { headers: headers() });
+    const cats = await res.json();
+
+    document.getElementById('categoriesTable').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Icon</th><th>Name</th><th>Products</th><th>Status</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+          ${cats.map(c => `
+            <tr>
+              <td style="font-size:24px">${c.icon || '🥦'}</td>
+              <td><strong>${c.name}</strong></td>
+              <td>${c.product_count || 0}</td>
+              <td><span class="status-badge ${c.active !== 0 ? 'status-delivered' : 'status-cancelled'}">${c.active !== 0 ? 'Active' : 'Hidden'}</span></td>
+              <td style="display:flex;gap:8px">
+                <button class="action-btn" onclick="toggleCategory(${c.id}, ${c.active !== 0 ? 0 : 1})">${c.active !== 0 ? 'Hide' : 'Show'}</button>
+                <button class="action-btn" style="color:var(--muted)" onclick="deleteCategory(${c.id}, '${c.name}')">Delete</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function addCategory() {
+    const name = document.getElementById('catName').value.trim();
+    const icon = document.getElementById('catIcon').value.trim() || '🥦';
+
+    if (!name) { showToast('Category name is required'); return; }
+
+    const res = await fetch(`${API}/api/admin/categories`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name, icon })
+    });
+
+    if (res.ok) {
+      showToast(`✅ ${name} added!`);
+      document.getElementById('catName').value = '';
+      document.getElementById('catIcon').value = '';
+      loadCategories();
+    } else {
+      const d = await res.json();
+      showToast('Error: ' + d.error);
+    }
+  }
+
+  async function toggleCategory(id, active) {
+    await fetch(`${API}/api/admin/categories/${id}`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ active })
+    });
+    showToast(active ? 'Category visible' : 'Category hidden');
+    loadCategories();
+  }
+
+  async function deleteCategory(id, name) {
+    if (!confirm(`Delete "${name}"? Products in this category will be hidden.`)) return;
+    await fetch(`${API}/api/admin/categories/${id}`, { method: 'DELETE', headers: headers() });
+    showToast(`${name} deleted`);
+    loadCategories();
   }
 
   // CUSTOMERS

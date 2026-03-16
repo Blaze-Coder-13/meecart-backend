@@ -21,6 +21,16 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/admin', require('./routes/admin'));
 
+// Public settings route
+app.get('/api/settings', (req, res) => {
+  const { getDb } = require('./db');
+  const db = getDb();
+  const settings = db.prepare('SELECT key, value FROM settings').all();
+  const result = {};
+  settings.forEach(s => result[s.key] = s.value);
+  res.json(result);
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), app: 'Meecart' });
@@ -47,7 +57,7 @@ if (require.main === module) {
     console.log(`\n🛒 Meecart server running at http://localhost:${PORT}`);
     console.log(`📱 Customer app:  http://localhost:${PORT}`);
     console.log(`🛠️  Admin panel:   http://localhost:${PORT}/admin`);
-    console.log(`\n💡 Admin login: phone 9999999999 (any OTP works in dev)\n`);
+    console.log(`\n💡 Admin login: phone 9999999999\n`);
   });
 }
 

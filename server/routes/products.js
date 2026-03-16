@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
     SELECT p.*, c.name as category_name, c.icon as category_icon
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.id
-    WHERE p.active = 1
+    WHERE p.active = 1 AND (c.active = 1 OR c.active IS NULL)
   `;
   const params = [];
 
@@ -27,7 +27,6 @@ router.get('/', (req, res) => {
   }
 
   query += ' ORDER BY c.name, p.name';
-
   const products = db.prepare(query).all(...params);
   res.json(products);
 });
@@ -35,7 +34,14 @@ router.get('/', (req, res) => {
 // GET /api/products/categories
 router.get('/categories', (req, res) => {
   const db = getDb();
-  const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
+  const categories = db.prepare(`
+    SELECT c.*, COUNT(p.id) as product_count
+    FROM categories c
+    LEFT JOIN products p ON p.category_id = c.id AND p.active = 1
+    WHERE c.active = 1 OR c.active IS NULL
+    GROUP BY c.id
+    ORDER BY c.name
+  `).all();
   res.json(categories);
 });
 
@@ -58,17 +64,14 @@ router.get('/:id', (req, res) => {
 // POST /api/products (admin)
 router.post('/', adminMiddleware, (req, res) => {
   const { name, description, price, unit, stock, category_id, image_emoji } = req.body;
-
   if (!name || !price) {
     return res.status(400).json({ error: 'Name and price are required' });
   }
-
   const db = getDb();
   const result = db.prepare(`
     INSERT INTO products (name, description, price, unit, stock, category_id, image_emoji)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(name, description, price, unit || 'kg', stock || 100, category_id, image_emoji || '🥦');
-
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(product);
 });
@@ -77,12 +80,10 @@ router.post('/', adminMiddleware, (req, res) => {
 router.put('/:id', adminMiddleware, (req, res) => {
   const { name, description, price, unit, stock, category_id, image_emoji, active } = req.body;
   const db = getDb();
-
   db.prepare(`
     UPDATE products SET name=?, description=?, price=?, unit=?, stock=?, category_id=?, image_emoji=?, active=?
     WHERE id=?
   `).run(name, description, price, unit, stock, category_id, image_emoji, active !== undefined ? active : 1, req.params.id);
-
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   res.json(product);
 });
