@@ -293,6 +293,9 @@
     <div class="nav-item" onclick="showSection('categories')">
       <span class="nav-icon">🏷️</span> Categories
     </div>
+    <div class="nav-item" onclick="showSection('offers')">
+      <span class="nav-icon">🎯</span> Offers & Banners
+    </div>
     <div class="nav-item" onclick="showSection('products')">
       <span class="nav-icon">🥦</span> Products
     </div>
@@ -351,6 +354,42 @@
           </div>
         </div>
         <div id="ordersTable"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+<!-- OFFERS & BANNERS -->
+    <div class="page-section" id="section-offers">
+      <div class="panel" style="margin-bottom:24px">
+        <div class="panel-header">
+          <div class="panel-title">Add New Banner</div>
+        </div>
+        <div style="padding:24px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Banner Title *</label>
+              <input class="form-input" id="bannerTitle" placeholder="e.g. Fresh Tomatoes on Sale!" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Image URL (optional)</label>
+              <input class="form-input" id="bannerImage" placeholder="https://..." />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Link to Product (optional)</label>
+              <select class="form-input" id="bannerProduct">
+                <option value="">No product link</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <button class="action-btn primary" style="margin-top:20px" onclick="addBanner()">+ Add Banner</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Active Banners</div>
+        </div>
+        <div id="bannersTable"><div class="loading">Loading…</div></div>
       </div>
     </div>
 
@@ -523,6 +562,7 @@
 
     if (name === 'dashboard') loadDashboard();
     if (name === 'orders') loadOrders();
+    if (name === 'offers') loadBanners();
     if (name === 'categories') loadCategories();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
@@ -829,6 +869,70 @@
     await fetch(`${API}/api/products/${id}`, { method: 'DELETE', headers: headers() });
     showToast(`${name} removed`);
     loadProducts();
+  }
+
+// BANNERS
+  async function loadBanners() {
+    // Load products for dropdown
+    const prodRes = await fetch(`${API}/api/products`);
+    const prods = await prodRes.json();
+    const sel = document.getElementById('bannerProduct');
+    if (sel) {
+      sel.innerHTML = '<option value="">No product link</option>' +
+        prods.map(p => `<option value="${p.id}">${p.image_emoji} ${p.name}</option>`).join('');
+    }
+
+    const res = await fetch(`${API}/api/admin/banners`, { headers: headers() });
+    const banners = await res.json();
+
+    document.getElementById('bannersTable').innerHTML = banners.length === 0
+      ? '<div class="loading">No banners yet. Add one above!</div>'
+      : `<table>
+          <thead><tr>
+            <th>Title</th><th>Image</th><th>Product</th><th>Added</th><th>Action</th>
+          </tr></thead>
+          <tbody>
+            ${banners.map(b => `
+              <tr>
+                <td><strong>${b.title}</strong></td>
+                <td>${b.image_url ? `<img src="${b.image_url}" style="height:40px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'">` : '—'}</td>
+                <td>${b.product_id ? `Product #${b.product_id}` : '—'}</td>
+                <td>${new Date(b.created_at).toLocaleDateString('en-IN')}</td>
+                <td><button class="action-btn" style="color:var(--muted)" onclick="deleteBanner(${b.id})">Delete</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+  }
+
+  async function addBanner() {
+    const title = document.getElementById('bannerTitle').value.trim();
+    const image_url = document.getElementById('bannerImage').value.trim();
+    const product_id = document.getElementById('bannerProduct').value;
+
+    if (!title) { showToast('Banner title is required'); return; }
+
+    const res = await fetch(`${API}/api/admin/banners`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ title, image_url: image_url || null, product_id: product_id || null })
+    });
+
+    if (res.ok) {
+      showToast(`✅ Banner added!`);
+      document.getElementById('bannerTitle').value = '';
+      document.getElementById('bannerImage').value = '';
+      document.getElementById('bannerProduct').value = '';
+      loadBanners();
+    } else {
+      showToast('Error adding banner');
+    }
+  }
+
+  async function deleteBanner(id) {
+    if (!confirm('Delete this banner?')) return;
+    await fetch(`${API}/api/admin/banners/${id}`, { method: 'DELETE', headers: headers() });
+    showToast('Banner deleted');
+    loadBanners();
   }
 
 // CATEGORIES
