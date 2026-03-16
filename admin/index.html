@@ -299,6 +299,9 @@
     <div class="nav-item" onclick="showSection('customers')">
       <span class="nav-icon">👥</span> Customers
     </div>
+    <div class="nav-item" onclick="showSection('settings')">
+      <span class="nav-icon">⚙️</span> Settings
+    </div>
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" onclick="logout()">🚪 Logout</button>
@@ -432,6 +435,46 @@
       </div>
     </div>
 
+<!-- SETTINGS -->
+    <div class="page-section" id="section-settings">
+      <div class="panel" style="margin-bottom:24px">
+        <div class="panel-header">
+          <div class="panel-title">Delivery Settings</div>
+        </div>
+        <div style="padding:24px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Minimum Order Value (₹)</label>
+              <input class="form-input" type="number" id="set_min_order_value" placeholder="150" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Delivery Charges (₹)</label>
+              <input class="form-input" type="number" id="set_delivery_charges" placeholder="30" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Free Delivery Above (₹)</label>
+              <input class="form-input" type="number" id="set_free_delivery_above" placeholder="150" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Delivery Time</label>
+              <input class="form-input" id="set_delivery_time" placeholder="7:00 AM - 12:00 PM" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Delivery Days</label>
+              <input class="form-input" id="set_delivery_days" placeholder="Monday to Saturday" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Free Delivery Message</label>
+              <input class="form-input" id="set_delivery_message" placeholder="Add ₹{amount} more for free delivery!" />
+            </div>
+            <div class="form-group full">
+              <button class="action-btn primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- CUSTOMERS -->
     <div class="page-section" id="section-customers">
       <div class="panel">
@@ -483,6 +526,7 @@
     if (name === 'categories') loadCategories();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
+    if (name === 'settings') loadSettings();
   }
 
   function refreshCurrent() { showSection(currentSection); }
@@ -853,6 +897,36 @@
     loadCategories();
   }
 
+// SETTINGS
+  async function loadSettings() {
+    const res = await fetch(`${API}/api/admin/settings`, { headers: headers() });
+    const data = await res.json();
+
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message'];
+    fields.forEach(key => {
+      const el = document.getElementById(`set_${key}`);
+      if (el && data[key]) el.value = data[key];
+    });
+  }
+
+  async function saveSettings() {
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message'];
+    const updates = {};
+    fields.forEach(key => {
+      const el = document.getElementById(`set_${key}`);
+      if (el && el.value) updates[key] = el.value;
+    });
+
+    const res = await fetch(`${API}/api/admin/settings`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify(updates)
+    });
+
+    if (res.ok) showToast('✅ Settings saved!');
+    else showToast('Error saving settings');
+  }
+
   // CUSTOMERS
   async function loadCustomers() {
     const res = await fetch(`${API}/api/admin/users`, { headers: headers() });
@@ -861,14 +935,15 @@
     document.getElementById('customersTable').innerHTML = `
       <table>
         <thead><tr>
-          <th>Phone</th><th>Name</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
+          <th>Phone</th><th>Name</th><th>Address</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
         </tr></thead>
         <tbody>
           ${data.users.map(u => `
             <tr>
               <td><strong>${u.phone}</strong></td>
-              <td>${u.name || '—'}</td>
-              <td>${u.order_count}</td>
+<td>${u.name || '—'}</td>
+<td style="max-width:180px;font-size:12px">${u.address || '—'}</td>
+<td>${u.order_count}</td>
               <td>₹${u.total_spent}</td>
               <td>${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
             </tr>`).join('')}
