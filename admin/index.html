@@ -519,6 +519,9 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">All Customers</div>
+          <a href="/api/admin/export/customers" style="text-decoration:none">
+            <button class="action-btn primary" onclick="exportCSV()">📥 Export CSV</button>
+          </a>
         </div>
         <div id="customersTable"><div class="loading">Loading…</div></div>
       </div>
@@ -616,10 +619,12 @@
       </div>
     `;
 
+    const badge = document.getElementById('pendingBadge');
     if (data.pending_orders > 0) {
-      const badge = document.getElementById('pendingBadge');
       badge.textContent = data.pending_orders;
       badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
     }
 
     document.getElementById('recentOrders').innerHTML = `
@@ -672,7 +677,7 @@
                   ).join('')}
                 </select>
               </td>
-              <td>${new Date(o.created_at).toLocaleDateString('en-IN')}</td>
+              <td>${new Date(o.created_at).toLocaleDateString('en-IN')}<br><span style="color:var(--muted);font-size:11px">${new Date(o.created_at).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'})}</span></td>
               <td><button class="action-btn" onclick="viewOrder(${o.id})">View</button></td>
             </tr>`).join('')}
         </tbody>
@@ -824,7 +829,8 @@
                 <input type="number" value="${p.stock}" style="width:70px;padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit"
                   onchange="updateStock(${p.id}, this.value)" />
               </td>
-              <td>
+              <td style="display:flex;gap:6px">
+                <button class="action-btn" onclick="editProduct(${p.id}, '${p.name}', ${p.price}, '${p.unit}', ${p.stock}, ${p.category_id || 0}, '${p.image_emoji}', '${p.description || ''}')">Edit</button>
                 <button class="action-btn" style="color:var(--muted)" onclick="deactivateProduct(${p.id}, '${p.name}')">Remove</button>
               </td>
             </tr>`).join('')}
@@ -952,8 +958,12 @@
               <td><strong>${c.name}</strong></td>
               <td>${c.product_count || 0}</td>
               <td><span class="status-badge ${c.active !== 0 ? 'status-delivered' : 'status-cancelled'}">${c.active !== 0 ? 'Active' : 'Hidden'}</span></td>
-              <td style="display:flex;gap:8px">
-                <button class="action-btn" onclick="toggleCategory(${c.id}, ${c.active !== 0 ? 0 : 1})">${c.active !== 0 ? 'Hide' : 'Show'}</button>
+              <td style="display:flex;gap:6px;align-items:center">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                  <input type="checkbox" ${c.active !== 0 ? 'checked' : ''} onchange="toggleCategory(${c.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
+                  <span style="font-size:12px">${c.active !== 0 ? 'Active' : 'Hidden'}</span>
+                </label>
+                <button class="action-btn" onclick="editCategory(${c.id}, '${c.name}', '${c.icon}')">Edit</button>
                 <button class="action-btn" style="color:var(--muted)" onclick="deleteCategory(${c.id}, '${c.name}')">Delete</button>
               </td>
             </tr>`).join('')}
@@ -1001,6 +1011,60 @@
     loadCategories();
   }
 
+async function editCategory(id, name, icon) {
+    const newName = prompt('Category name:', name);
+    if (!newName) return;
+    const newIcon = prompt('Emoji icon:', icon);
+    await fetch(`${API}/api/admin/categories/${id}`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ name: newName, icon: newIcon || icon })
+    });
+    showToast('Category updated');
+    loadCategories();
+  }
+
+  async function editProduct(id, name, price, unit, stock, categoryId, emoji, description) {
+    const newName = prompt('Product name:', name);
+    if (!newName) return;
+    const newPrice = prompt('Price (₹):', price);
+    if (!newPrice) return;
+    const newUnit = prompt('Unit:', unit);
+    const newStock = prompt('Stock:', stock);
+    const newEmoji = prompt('Emoji:', emoji);
+
+    const res = await fetch(`${API}/api/products/${id}`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({
+        name: newName,
+        price: Number(newPrice),
+        unit: newUnit || unit,
+        stock: Number(newStock) || stock,
+        category_id: categoryId,
+        image_emoji: newEmoji || emoji,
+        description: description,
+        active: 1
+      })
+    });
+    if (res.ok) {
+      showToast(`✅ ${newName} updated!`);
+      loadProducts();
+    } else {
+      showToast('Error updating product');
+    }
+  }
+
+  function exportCSV() {
+    const link = document.createElement('a');
+    link.href = `${API}/api/admin/export/customers`;
+    link.setAttribute('download', 'meecart-customers.csv');
+    link.setAttribute('Authorization', token);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
 // SETTINGS
   async function loadSettings() {
     const res = await fetch(`${API}/api/admin/settings`, { headers: headers() });
@@ -1039,14 +1103,15 @@
     document.getElementById('customersTable').innerHTML = `
       <table>
         <thead><tr>
-          <th>Phone</th><th>Name</th><th>Address</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
+          <th>Phone</th><th>Name</th><th>Address</th><th>Referral Code</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
         </tr></thead>
         <tbody>
           ${data.users.map(u => `
             <tr>
               <td><strong>${u.phone}</strong></td>
 <td>${u.name || '—'}</td>
-<td style="max-width:180px;font-size:12px">${u.address || '—'}</td>
+<td style="max-width:150px;font-size:12px">${u.address || '—'}</td>
+<td><code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:11px">${u.referral_code || '—'}</code></td>
 <td>${u.order_count}</td>
               <td>₹${u.total_spent}</td>
               <td>${new Date(u.created_at).toLocaleDateString('en-IN')}</td>

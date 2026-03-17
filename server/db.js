@@ -99,11 +99,30 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS banners (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
+      title TEXT,
       image_url TEXT,
       product_id INTEGER,
       active INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS promo_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      discount_type TEXT DEFAULT 'flat',
+      discount_value REAL NOT NULL,
+      min_order_value REAL DEFAULT 0,
+      max_uses INTEGER DEFAULT 100,
+      used_count INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      expires_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT NOT NULL
     );
   `);
 
@@ -125,6 +144,7 @@ function migrateSchema() {
     "ALTER TABLE orders ADD COLUMN discount REAL DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN delivery_date TEXT",
     "ALTER TABLE otp_codes ADD COLUMN purpose TEXT DEFAULT 'signup'",
+"ALTER TABLE banners ADD COLUMN title TEXT",
   ];
 
   for (const sql of migrations) {

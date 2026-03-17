@@ -28,9 +28,12 @@ router.post('/', authMiddleware, (req, res) => {
   const validatedItems = [];
 
   for (const item of items) {
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(item.product_id);
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(item.product_id);
     if (!product) {
-      return res.status(400).json({ error: `Product ID ${item.product_id} not found` });
+      return res.status(400).json({ error: `One or more products in your cart are no longer available. Please refresh and try again.` });
+    }
+    if (!product.active) {
+      return res.status(400).json({ error: `"${product.name}" is currently not available. Please remove it from your cart and try again.` });
     }
     if (!item.quantity || item.quantity <= 0) {
       return res.status(400).json({ error: `Invalid quantity for ${product.name}` });
@@ -73,7 +76,8 @@ router.post('/', authMiddleware, (req, res) => {
 router.get('/my', authMiddleware, (req, res) => {
   const db = getDb();
   const orders = db.prepare(`
-    SELECT o.*, COUNT(oi.id) as item_count
+    SELECT o.*, COUNT(oi.id) as item_count,
+           o.subtotal, o.delivery_charges, o.discount
     FROM orders o
     LEFT JOIN order_items oi ON o.id = oi.order_id
     WHERE o.user_id = ?
@@ -169,14 +173,14 @@ router.put('/:id/status', adminMiddleware, (req, res) => {
 // Helper: get full order with items
 function getOrderWithItems(db, orderId) {
   const order = db.prepare(`
-    SELECT o.*, u.phone, u.name as customer_name
+    SELECT o.*, u.phone, u.name as customer_name, u.address as customer_address
     FROM orders o
     LEFT JOIN users u ON o.user_id = u.id
     WHERE o.id = ?
   `).get(orderId);
 
   const items = db.prepare(`
-    SELECT oi.*, p.name, p.image_emoji, p.unit
+    SELECT oi.*, oi.product_id, p.name, p.image_emoji, p.unit
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     WHERE oi.order_id = ?
