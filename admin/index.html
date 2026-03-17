@@ -294,7 +294,10 @@
       <span class="nav-icon">🏷️</span> Categories
     </div>
     <div class="nav-item" onclick="showSection('offers')">
-      <span class="nav-icon">🎯</span> Offers & Banners
+      <span class="nav-icon">🖼️</span> Banners
+    </div>
+    <div class="nav-item" onclick="showSection('promos')">
+      <span class="nav-icon">🎟️</span> Promo Codes
     </div>
     <div class="nav-item" onclick="showSection('products')">
       <span class="nav-icon">🥦</span> Products
@@ -357,7 +360,7 @@
       </div>
     </div>
 
-<!-- OFFERS & BANNERS -->
+<!-- BANNERS -->
     <div class="page-section" id="section-offers">
       <div class="panel" style="margin-bottom:24px">
         <div class="panel-header">
@@ -365,22 +368,12 @@
         </div>
         <div style="padding:24px">
           <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Banner Title *</label>
-              <input class="form-input" id="bannerTitle" placeholder="e.g. Fresh Tomatoes on Sale!" />
+            <div class="form-group full">
+              <label class="form-label">Banner Image URL *</label>
+              <input class="form-input" id="bannerImage" placeholder="https://your-image-url.com/banner.jpg" />
             </div>
             <div class="form-group">
-              <label class="form-label">Image URL (optional)</label>
-              <input class="form-input" id="bannerImage" placeholder="https://..." />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Link to Product (optional)</label>
-              <select class="form-input" id="bannerProduct">
-                <option value="">No product link</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <button class="action-btn primary" style="margin-top:20px" onclick="addBanner()">+ Add Banner</button>
+              <button class="action-btn primary" style="margin-top:8px" onclick="addBanner()">+ Add Banner</button>
             </div>
           </div>
         </div>
@@ -390,6 +383,55 @@
           <div class="panel-title">Active Banners</div>
         </div>
         <div id="bannersTable"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- PROMO CODES -->
+    <div class="page-section" id="section-promos">
+      <div class="panel" style="margin-bottom:24px">
+        <div class="panel-header">
+          <div class="panel-title">Create Promo Code</div>
+        </div>
+        <div style="padding:24px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Promo Code *</label>
+              <input class="form-input" id="promoCode" placeholder="e.g. SAVE50" style="text-transform:uppercase" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Discount Type</label>
+              <select class="form-input" id="promoType">
+                <option value="flat">Flat (₹ off)</option>
+                <option value="percent">Percentage (% off)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Discount Value *</label>
+              <input class="form-input" type="number" id="promoValue" placeholder="50" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Min Order Value (₹)</label>
+              <input class="form-input" type="number" id="promoMinOrder" placeholder="150" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Max Uses</label>
+              <input class="form-input" type="number" id="promoMaxUses" placeholder="100" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Expires At (optional)</label>
+              <input class="form-input" type="date" id="promoExpiry" />
+            </div>
+            <div class="form-group full">
+              <button class="action-btn primary" onclick="addPromo()">+ Create Promo Code</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">All Promo Codes</div>
+        </div>
+        <div id="promosTable"><div class="loading">Loading…</div></div>
       </div>
     </div>
 
@@ -595,6 +637,7 @@
     if (name === 'dashboard') loadDashboard();
     if (name === 'orders') loadOrders();
     if (name === 'offers') loadBanners();
+    if (name === 'promos') loadPromos();
     if (name === 'categories') loadCategories();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
@@ -908,15 +951,6 @@
 
 // BANNERS
   async function loadBanners() {
-    // Load products for dropdown
-    const prodRes = await fetch(`${API}/api/products`);
-    const prods = await prodRes.json();
-    const sel = document.getElementById('bannerProduct');
-    if (sel) {
-      sel.innerHTML = '<option value="">No product link</option>' +
-        prods.map(p => `<option value="${p.id}">${p.image_emoji} ${p.name}</option>`).join('');
-    }
-
     const res = await fetch(`${API}/api/admin/banners`, { headers: headers() });
     const banners = await res.json();
 
@@ -924,14 +958,19 @@
       ? '<div class="loading">No banners yet. Add one above!</div>'
       : `<table>
           <thead><tr>
-            <th>Title</th><th>Image</th><th>Product</th><th>Added</th><th>Action</th>
+            <th>Preview</th><th>Image URL</th><th>Status</th><th>Added</th><th>Action</th>
           </tr></thead>
           <tbody>
             ${banners.map(b => `
               <tr>
-                <td><strong>${b.title}</strong></td>
-                <td>${b.image_url ? `<img src="${b.image_url}" style="height:40px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'">` : '—'}</td>
-                <td>${b.product_id ? `Product #${b.product_id}` : '—'}</td>
+                <td>${b.image_url ? `<img src="${b.image_url}" style="height:50px;border-radius:6px;object-fit:cover;max-width:100px" onerror="this.style.display='none'">` : '—'}</td>
+                <td style="max-width:200px;font-size:12px;word-break:break-all">${b.image_url || '—'}</td>
+                <td>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" ${b.active ? 'checked' : ''} onchange="toggleBanner(${b.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
+                    <span style="font-size:12px">${b.active ? 'Active' : 'Hidden'}</span>
+                  </label>
+                </td>
                 <td>${new Date(b.created_at).toLocaleDateString('en-IN')}</td>
                 <td><button class="action-btn" style="color:var(--muted)" onclick="deleteBanner(${b.id})">Delete</button></td>
               </tr>`).join('')}
@@ -940,27 +979,31 @@
   }
 
   async function addBanner() {
-    const title = document.getElementById('bannerTitle').value.trim();
     const image_url = document.getElementById('bannerImage').value.trim();
-    const product_id = document.getElementById('bannerProduct').value;
-
-    if (!title) { showToast('Banner title is required'); return; }
+    if (!image_url) { showToast('Please enter an image URL'); return; }
 
     const res = await fetch(`${API}/api/admin/banners`, {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ title, image_url: image_url || null, product_id: product_id || null })
+      body: JSON.stringify({ image_url })
     });
 
     if (res.ok) {
-      showToast(`✅ Banner added!`);
-      document.getElementById('bannerTitle').value = '';
+      showToast('✅ Banner added!');
       document.getElementById('bannerImage').value = '';
-      document.getElementById('bannerProduct').value = '';
       loadBanners();
     } else {
       showToast('Error adding banner');
     }
+  }
+
+  async function toggleBanner(id, active) {
+    await fetch(`${API}/api/admin/banners/${id}`, {
+      method: 'PUT', headers: headers(),
+      body: JSON.stringify({ active })
+    });
+    showToast(active ? 'Banner visible' : 'Banner hidden');
+    loadBanners();
   }
 
   async function deleteBanner(id) {
@@ -968,6 +1011,79 @@
     await fetch(`${API}/api/admin/banners/${id}`, { method: 'DELETE', headers: headers() });
     showToast('Banner deleted');
     loadBanners();
+  }
+
+  // PROMO CODES
+  async function loadPromos() {
+    const res = await fetch(`${API}/api/admin/promos`, { headers: headers() });
+    const promos = await res.json();
+
+    document.getElementById('promosTable').innerHTML = promos.length === 0
+      ? '<div class="loading">No promo codes yet.</div>'
+      : `<table>
+          <thead><tr>
+            <th>Code</th><th>Type</th><th>Discount</th><th>Min Order</th><th>Used/Max</th><th>Expires</th><th>Status</th><th>Action</th>
+          </tr></thead>
+          <tbody>
+            ${promos.map(p => `
+              <tr>
+                <td><code style="background:#f0f0f0;padding:2px 8px;border-radius:4px;font-weight:700">${p.code}</code></td>
+                <td>${p.discount_type === 'flat' ? 'Flat' : 'Percent'}</td>
+                <td>${p.discount_type === 'flat' ? '₹' + p.discount_value : p.discount_value + '%'}</td>
+                <td>₹${p.min_order_value}</td>
+                <td>${p.used_count}/${p.max_uses}</td>
+                <td>${p.expires_at ? new Date(p.expires_at).toLocaleDateString('en-IN') : 'Never'}</td>
+                <td>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" ${p.active ? 'checked' : ''} onchange="togglePromo(${p.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
+                    <span style="font-size:12px">${p.active ? 'Active' : 'Off'}</span>
+                  </label>
+                </td>
+                <td><button class="action-btn" style="color:var(--muted)" onclick="deletePromo(${p.id})">Delete</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+  }
+
+  async function addPromo() {
+    const code = document.getElementById('promoCode').value.trim().toUpperCase();
+    const discount_type = document.getElementById('promoType').value;
+    const discount_value = document.getElementById('promoValue').value;
+    const min_order_value = document.getElementById('promoMinOrder').value || 0;
+    const max_uses = document.getElementById('promoMaxUses').value || 100;
+    const expires_at = document.getElementById('promoExpiry').value || null;
+
+    if (!code || !discount_value) { showToast('Code and discount value required'); return; }
+
+    const res = await fetch(`${API}/api/admin/promos`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ code, discount_type, discount_value, min_order_value, max_uses, expires_at })
+    });
+
+    if (res.ok) {
+      showToast(`✅ Promo code ${code} created!`);
+      ['promoCode','promoValue','promoMinOrder','promoMaxUses','promoExpiry'].forEach(id => document.getElementById(id).value = '');
+      loadPromos();
+    } else {
+      const d = await res.json();
+      showToast('Error: ' + d.error);
+    }
+  }
+
+  async function togglePromo(id, active) {
+    await fetch(`${API}/api/admin/promos/${id}`, {
+      method: 'PUT', headers: headers(),
+      body: JSON.stringify({ active })
+    });
+    showToast(active ? 'Promo activated' : 'Promo deactivated');
+    loadPromos();
+  }
+
+  async function deletePromo(id) {
+    if (!confirm('Delete this promo code?')) return;
+    await fetch(`${API}/api/admin/promos/${id}`, { method: 'DELETE', headers: headers() });
+    showToast('Promo code deleted');
+    loadPromos();
   }
 
 // CATEGORIES
