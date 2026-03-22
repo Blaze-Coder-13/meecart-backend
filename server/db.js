@@ -1,24 +1,30 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const { Pool } = require('pg');
 
-const DB_PATH = path.join(__dirname, '..', 'meecart.db');
-
-let db;
+let pool;
 
 function getDb() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+    });
     initSchema();
   }
-  return db;
+  return pool;
 }
 
-function initSchema() {
-  db.exec(`
+async function query(text, params) {
+  const db = getDb();
+  const res = await db.query(text, params);
+  return res;
+}
+
+async function initSchema() {
+  const db = getDb();
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       phone TEXT UNIQUE NOT NULL,
       name TEXT,
       address TEXT,
@@ -26,21 +32,21 @@ function initSchema() {
       referral_code TEXT,
       referred_by TEXT,
       role TEXT DEFAULT 'customer',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS otp_codes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       phone TEXT NOT NULL,
       code TEXT NOT NULL,
       purpose TEXT DEFAULT 'signup',
-      expires_at DATETIME NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
       used INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       icon TEXT DEFAULT '🥦',
       image_url TEXT,
@@ -48,7 +54,7 @@ function initSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
       price REAL NOT NULL,
@@ -58,12 +64,11 @@ function initSchema() {
       image_emoji TEXT DEFAULT '🥦',
       image_url TEXT,
       active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES categories(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
       status TEXT DEFAULT 'pending',
       subtotal REAL NOT NULL DEFAULT 0,
@@ -75,39 +80,36 @@ function initSchema() {
       payment_method TEXT DEFAULT 'cod',
       payment_status TEXT DEFAULT 'pending',
       delivery_date TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS order_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       order_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
       quantity REAL NOT NULL,
-      price REAL NOT NULL,
-      FOREIGN KEY (order_id) REFERENCES orders(id),
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      price REAL NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       key TEXT UNIQUE NOT NULL,
       value TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS banners (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT,
       image_url TEXT,
       product_id INTEGER,
       active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS promo_codes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       code TEXT UNIQUE NOT NULL,
       discount_type TEXT DEFAULT 'flat',
       discount_value REAL NOT NULL,
@@ -115,56 +117,23 @@ function initSchema() {
       max_uses INTEGER DEFAULT 100,
       used_count INTEGER DEFAULT 0,
       active INTEGER DEFAULT 1,
-      expires_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS app_settings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT UNIQUE NOT NULL,
-      value TEXT NOT NULL
+      expires_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  migrateSchema();
-  seedData();
+  await seedData();
 }
 
-function migrateSchema() {
-  // Add new columns to existing tables safely
-  const migrations = [
-    "ALTER TABLE users ADD COLUMN password TEXT",
-    "ALTER TABLE users ADD COLUMN referral_code TEXT",
-    "ALTER TABLE users ADD COLUMN referred_by TEXT",
-    "ALTER TABLE categories ADD COLUMN image_url TEXT",
-    "ALTER TABLE categories ADD COLUMN active INTEGER DEFAULT 1",
-    "ALTER TABLE products ADD COLUMN image_url TEXT",
-    "ALTER TABLE orders ADD COLUMN subtotal REAL DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN delivery_charges REAL DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN discount REAL DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN delivery_date TEXT",
-    "ALTER TABLE otp_codes ADD COLUMN purpose TEXT DEFAULT 'signup'",
-"ALTER TABLE banners ADD COLUMN title TEXT",
-  ];
+async function seedData() {
+  const db = getDb();
 
-  for (const sql of migrations) {
-    try { db.exec(sql); } catch {}
-  }
-}
-
-function generateReferralCode(phone) {
-  return 'MC' + phone.slice(-4) + Math.random().toString(36).substring(2, 5).toUpperCase();
-}
-
-function seedData() {
-  const categoryCount = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
-  if (categoryCount > 0) {
-    seedSettings();
+  const catCount = await db.query('SELECT COUNT(*) as c FROM categories');
+  if (parseInt(catCount.rows[0].c) > 0) {
+    await seedSettings();
     return;
   }
 
-  // Seed categories
-  const insertCat = db.prepare('INSERT INTO categories (name, icon) VALUES (?, ?)');
   const categories = [
     ['Leafy Greens', '🥬'],
     ['Root Vegetables', '🥕'],
@@ -173,13 +142,10 @@ function seedData() {
     ['Fruits & Tomatoes', '🍅'],
     ['Beans & Pods', '🫘'],
   ];
-  categories.forEach(c => insertCat.run(...c));
 
-  // Seed products
-  const insertProd = db.prepare(`
-    INSERT INTO products (name, description, price, unit, stock, category_id, image_emoji)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
+  for (const [name, icon] of categories) {
+    await db.query('INSERT INTO categories (name, icon) VALUES ($1, $2)', [name, icon]);
+  }
 
   const products = [
     ['Spinach', 'Fresh farm spinach', 25, '250g', 80, 1, '🥬'],
@@ -204,19 +170,24 @@ function seedData() {
     ['Drumstick', 'Moringa pods', 30, '250g', 25, 6, '🪵'],
   ];
 
-  products.forEach(p => insertProd.run(...p));
-
-  // Seed admin user
-  const adminExists = db.prepare("SELECT id FROM users WHERE phone = '9999999999'").get();
-  if (!adminExists) {
-    db.prepare("INSERT INTO users (phone, name, role) VALUES ('9999999999', 'Admin', 'admin')").run();
+  for (const p of products) {
+    await db.query(`
+      INSERT INTO products (name, description, price, unit, stock, category_id, image_emoji)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, p);
   }
 
-  seedSettings();
+  const adminExists = await db.query("SELECT id FROM users WHERE phone = '9999999999'");
+  if (adminExists.rows.length === 0) {
+    await db.query("INSERT INTO users (phone, name, role) VALUES ('9999999999', 'Admin', 'admin')");
+  }
+
+  await seedSettings();
   console.log('✅ Database seeded');
 }
 
-function seedSettings() {
+async function seedSettings() {
+  const db = getDb();
   const settingsData = [
     ['min_order_value', '150'],
     ['delivery_charges', '30'],
@@ -230,8 +201,16 @@ function seedSettings() {
     ['app_name', 'Meecart'],
   ];
 
-  const insert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-  settingsData.forEach(s => insert.run(...s));
+  for (const [key, value] of settingsData) {
+    await db.query(
+      'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+      [key, value]
+    );
+  }
 }
 
-module.exports = { getDb, generateReferralCode };
+function generateReferralCode(phone) {
+  return 'MC' + phone.slice(-4) + Math.random().toString(36).substring(2, 5).toUpperCase();
+}
+
+module.exports = { getDb, generateReferralCode, query };
