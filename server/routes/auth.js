@@ -106,6 +106,14 @@ router.post('/signup', (req, res) => {
   const hashedPassword = hashPassword(password);
   const myReferralCode = generateReferralCode(phone);
 
+  // Validate referral code if provided
+  if (referral_code) {
+    const referrer = db.prepare('SELECT id FROM users WHERE referral_code = ?').get(referral_code);
+    if (!referral_code || !referrer) {
+      return res.status(400).json({ error: 'Invalid referral code. Please check and try again.' });
+    }
+  }
+
   const result = db.prepare(`
     INSERT INTO users (phone, name, address, password, referral_code, referred_by)
     VALUES (?, ?, ?, ?, ?, ?)
