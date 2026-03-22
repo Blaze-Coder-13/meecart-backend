@@ -56,6 +56,19 @@ router.get('/dashboard', adminMiddleware, (req, res) => {
 
 // ── CATEGORIES ────────────────────────────────────────
 
+// GET all categories including hidden (admin only)
+router.get('/categories/all', adminMiddleware, (req, res) => {
+  const db = getDb();
+  const categories = db.prepare(`
+    SELECT c.*, COUNT(p.id) as product_count
+    FROM categories c
+    LEFT JOIN products p ON p.category_id = c.id AND p.active = 1
+    GROUP BY c.id
+    ORDER BY c.name
+  `).all();
+  res.json(categories);
+});
+
 router.post('/categories', adminMiddleware, (req, res) => {
   const { name, icon } = req.body;
   if (!name) return res.status(400).json({ error: 'Category name required' });

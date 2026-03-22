@@ -1088,7 +1088,7 @@
 
 // CATEGORIES
   async function loadCategories() {
-    const res = await fetch(`${API}/api/products/categories`, { headers: headers() });
+    const res = await fetch(`${API}/api/admin/categories/all`, { headers: headers() });
     const cats = await res.json();
 
     document.getElementById('categoriesTable').innerHTML = `
