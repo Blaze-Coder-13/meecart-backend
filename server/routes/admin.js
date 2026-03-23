@@ -98,7 +98,10 @@ router.post('/categories', adminMiddleware, async (req, res) => {
   const { name, icon, image_url } = req.body;
   if (!name) return res.status(400).json({ error: 'Category name required' });
   try {
-    const result = await query('INSERT INTO categories (name, icon, image_url) VALUES ($1, $2, $3) RETURNING *', [name, icon || '🥦', image_url || null]);
+    const result = await query(
+      'INSERT INTO categories (name, icon, image_url) VALUES ($1, $2, $3) RETURNING *',
+      [name, icon || '🥦', image_url || null]
+    );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -125,10 +128,11 @@ router.put('/categories/:id', adminMiddleware, async (req, res) => {
 
 router.delete('/categories/:id', adminMiddleware, async (req, res) => {
   try {
-    await query('UPDATE categories SET active = 0 WHERE id = $1', [req.params.id]);
     await query('UPDATE products SET active = 0 WHERE category_id = $1', [req.params.id]);
+    await query('DELETE FROM categories WHERE id = $1', [req.params.id]);
     res.json({ message: 'Category deleted' });
   } catch (err) {
+    console.error('Delete category error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
