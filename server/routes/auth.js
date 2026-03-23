@@ -248,4 +248,27 @@ router.put('/profile', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/auth/push-token
+router.post('/push-token', async (req, res) => {
+  const { token, phone } = req.body;
+  if (!token || !phone) return res.status(400).json({ error: 'Token and phone required' });
+
+  try {
+    const userResult = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const userId = userResult.rows[0].id;
+    await query(`
+      INSERT INTO push_tokens (user_id, token)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id, token) DO NOTHING
+    `, [userId, token]);
+
+    res.json({ message: 'Push token saved' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

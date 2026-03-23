@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { sendPushToUser, sendPushToAdmins } = require('../utils/notify');
 
 // POST /api/orders
 router.post('/', authMiddleware, async (req, res) => {
@@ -85,6 +86,13 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const order = await getOrderWithItems(orderId);
+
+    // Notify admin of new order
+    sendPushToAdmins(
+      '🛒 New Order!',
+      `New order of ₹${total} received from ${req.user.phone}`
+    );
+
     res.status(201).json({ message: 'Order placed successfully', order });
   } catch (err) {
     console.error(err);
@@ -193,7 +201,26 @@ router.put('/:id/status', adminMiddleware, async (req, res) => {
 
     await query(text, params);
     const result = await query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
-    res.json(result.rows[0]);
+    const updatedOrder = result.rows[0];
+
+    // Notify customer of status change
+    const statusMessages = {
+      confirmed: '✅ Your order has been confirmed!',
+      packing: '📦 Your order is being packed!',
+      out_for_delivery: '🛵 Your order is out for delivery!',
+      delivered: '🎉 Your order has been delivered! Pay on delivery.',
+      cancelled: '❌ Your order has been cancelled.',
+    };
+
+    if (statusMessages[status]) {
+      sendPushToUser(
+        updatedOrder.user_id,
+        'Meecart Order Update',
+        statusMessages[status]
+      );
+    }
+
+    res.json(updatedOrder);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
