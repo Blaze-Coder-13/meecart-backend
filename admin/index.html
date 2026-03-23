@@ -1129,7 +1129,7 @@
                   <span style="font-size:12px">${c.active !== 0 ? 'Active' : 'Hidden'}</span>
                 </label>
                 <button class="action-btn" onclick="editCategory(${c.id}, '${c.name}', '${c.icon}', '${c.image_url || ''}')">Edit</button>
-                <button class="action-btn" style="color:var(--muted)" onclick="deleteCategory(${c.id}, '${c.name}')">Delete</button>
+                <button class="action-btn" style="color:var(--muted)" onclick="deleteCategory(${c.id})">Delete</button>
               </td>
             </tr>`).join('')}
         </tbody>
@@ -1171,11 +1171,11 @@
     loadCategories();
   }
 
-  async function deleteCategory(id, name) {
-    if (!confirm(`Delete "${name}" permanently? Products in this category will be hidden.`)) return;
+  async function deleteCategory(id) {
+    if (!confirm('Delete this category permanently? Products in this category will be hidden.')) return;
     const res = await fetch(`${API}/api/admin/categories/${id}`, { method: 'DELETE', headers: headers() });
     if (res.ok) {
-      showToast(`✅ ${name} deleted!`);
+      showToast('✅ Category deleted!');
       loadCategories();
     } else {
       showToast('Error deleting category');
