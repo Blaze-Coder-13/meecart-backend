@@ -329,4 +329,72 @@ router.get('/export/customers', adminMiddleware, async (req, res) => {
   }
 });
 
+// ── FLASH DEALS ───────────────────────────────────────
+
+router.get('/flash-deals', adminMiddleware, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price
+      FROM flash_deals fd
+      JOIN products p ON fd.product_id = p.id
+      ORDER BY fd.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/flash-deals', adminMiddleware, async (req, res) => {
+  const { product_id, deal_price, deal_quantity, deal_unit, max_per_order, days } = req.body;
+  if (!product_id || !deal_price || !days) {
+    return res.status(400).json({ error: 'Product, price and days required' });
+  }
+  try {
+    const expiresAt = new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000).toISOString();
+    const result = await query(`
+      INSERT INTO flash_deals (product_id, deal_price, deal_quantity, deal_unit, max_per_order, expires_at)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [product_id, deal_price, deal_quantity || 1, deal_unit || 'kg', max_per_order || 1, expiresAt]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/flash-deals/:id', adminMiddleware, async (req, res) => {
+  const { active } = req.body;
+  try {
+    await query('UPDATE flash_deals SET active = $1 WHERE id = $2', [active, req.params.id]);
+    res.json({ message: 'Flash deal updated' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/flash-deals/:id', adminMiddleware, async (req, res) => {
+  try {
+    await query('DELETE FROM flash_deals WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Flash deal deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Public flash deals for app
+router.get('/flash-deals/public', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price, p.unit as original_unit
+      FROM flash_deals fd
+      JOIN products p ON fd.product_id = p.id
+      WHERE fd.active = 1 AND fd.expires_at > NOW()
+      ORDER BY fd.expires_at ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

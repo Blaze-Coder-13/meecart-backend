@@ -128,6 +128,18 @@ async function initSchema() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(user_id, token)
     );
+
+    CREATE TABLE IF NOT EXISTS flash_deals (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL,
+      deal_price REAL NOT NULL,
+      deal_quantity REAL NOT NULL DEFAULT 1,
+      deal_unit TEXT DEFAULT 'kg',
+      max_per_order INTEGER DEFAULT 1,
+      expires_at TIMESTAMP NOT NULL,
+      active INTEGER DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   await seedData();

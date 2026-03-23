@@ -296,6 +296,9 @@
     <div class="nav-item" onclick="showSection('offers')">
       <span class="nav-icon">🖼️</span> Banners
     </div>
+    <div class="nav-item" onclick="showSection('flashdeals')">
+      <span class="nav-icon">⚡</span> Flash Deals
+    </div>
     <div class="nav-item" onclick="showSection('promos')">
       <span class="nav-icon">🎟️</span> Promo Codes
     </div>
@@ -357,6 +360,52 @@
           </div>
         </div>
         <div id="ordersTable"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+  <!-- FLASH DEALS -->
+    <div class="page-section" id="section-flashdeals">
+      <div class="panel" style="margin-bottom:24px">
+        <div class="panel-header">
+          <div class="panel-title">⚡ Add Flash Deal</div>
+        </div>
+        <div style="padding:24px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Product *</label>
+              <select class="form-input" id="fdProduct"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Deal Price (₹) *</label>
+              <input class="form-input" type="number" id="fdPrice" placeholder="e.g. 1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Quantity per Deal</label>
+              <input class="form-input" type="number" id="fdQuantity" placeholder="e.g. 1" value="1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Unit</label>
+              <input class="form-input" id="fdUnit" placeholder="kg, piece, bunch..." />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Max per Order</label>
+              <input class="form-input" type="number" id="fdMaxPerOrder" placeholder="1" value="1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Active for (days) *</label>
+              <input class="form-input" type="number" id="fdDays" placeholder="e.g. 7" />
+            </div>
+            <div class="form-group full">
+              <button class="action-btn primary" onclick="addFlashDeal()">⚡ Launch Flash Deal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Active Flash Deals</div>
+        </div>
+        <div id="flashDealsTable"><div class="loading">Loading…</div></div>
       </div>
     </div>
 
@@ -654,6 +703,7 @@
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
     if (name === 'settings') loadSettings();
+    if (name === 'flashdeals') loadFlashDeals();
   }
 
   function refreshCurrent() { showSection(currentSection); }
@@ -972,6 +1022,107 @@
     await fetch(`${API}/api/products/${id}`, { method: 'DELETE', headers: headers() });
     showToast(`${name} removed`);
     loadProducts();
+  }
+
+  // FLASH DEALS
+  async function loadFlashDeals() {
+    // Load products for dropdown
+    const prodRes = await fetch(`${API}/api/products`, { headers: headers() });
+    const prods = await prodRes.json();
+    const sel = document.getElementById('fdProduct');
+    if (sel) {
+      sel.innerHTML = prods.map(p => `<option value="${p.id}">${p.image_emoji} ${p.name} (₹${p.price}/${p.unit})</option>`).join('');
+      // Also set default unit
+      sel.onchange = function() {
+        const selected = prods.find(p => p.id == this.value);
+        if (selected) document.getElementById('fdUnit').value = selected.unit;
+      };
+      if (prods.length > 0) document.getElementById('fdUnit').value = prods[0].unit;
+    }
+
+    const res = await fetch(`${API}/api/admin/flash-deals`, { headers: headers() });
+    const deals = await res.json();
+
+    document.getElementById('flashDealsTable').innerHTML = deals.length === 0
+      ? '<div class="loading">No flash deals yet. Add one above!</div>'
+      : `<table>
+          <thead><tr>
+            <th>Product</th><th>Deal Price</th><th>Original Price</th><th>Quantity</th><th>Max/Order</th><th>Expires</th><th>Status</th><th>Action</th>
+          </tr></thead>
+          <tbody>
+            ${deals.map(d => {
+              const expired = new Date(d.expires_at) < new Date();
+              const timeLeft = getTimeLeft(d.expires_at);
+              return `
+              <tr>
+                <td>${d.image_url ? `<img src="${d.image_url}" style="width:30px;height:30px;border-radius:4px;object-fit:cover;margin-right:6px;vertical-align:middle">` : d.image_emoji} <strong>${d.product_name}</strong></td>
+                <td><strong style="color:var(--green)">₹${d.deal_price}</strong></td>
+                <td><span style="text-decoration:line-through;color:var(--muted)">₹${d.original_price}</span></td>
+                <td>${d.deal_quantity} ${d.deal_unit}</td>
+                <td>${d.max_per_order} per order</td>
+                <td style="font-size:12px">${expired ? '<span style="color:red">Expired</span>' : `<span style="color:var(--green)">${timeLeft}</span>`}</td>
+                <td>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" ${d.active ? 'checked' : ''} onchange="toggleFlashDeal(${d.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
+                    <span style="font-size:12px">${d.active ? 'Active' : 'Off'}</span>
+                  </label>
+                </td>
+                <td><button class="action-btn" style="color:var(--muted)" onclick="deleteFlashDeal(${d.id})">Delete</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+  }
+
+  function getTimeLeft(expiresAt) {
+    const diff = new Date(expiresAt) - new Date();
+    if (diff <= 0) return 'Expired';
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    if (days > 0) return `${days}d ${hours}h left`;
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${mins}m left`;
+  }
+
+  async function addFlashDeal() {
+    const product_id = document.getElementById('fdProduct').value;
+    const deal_price = document.getElementById('fdPrice').value;
+    const deal_quantity = document.getElementById('fdQuantity').value || 1;
+    const deal_unit = document.getElementById('fdUnit').value || 'kg';
+    const max_per_order = document.getElementById('fdMaxPerOrder').value || 1;
+    const days = document.getElementById('fdDays').value;
+
+    if (!product_id || !deal_price || !days) { showToast('Product, price and days are required'); return; }
+
+    const res = await fetch(`${API}/api/admin/flash-deals`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ product_id, deal_price, deal_quantity, deal_unit, max_per_order, days })
+    });
+
+    if (res.ok) {
+      showToast('⚡ Flash deal launched!');
+      ['fdPrice', 'fdQuantity', 'fdDays'].forEach(id => document.getElementById(id).value = '');
+      loadFlashDeals();
+    } else {
+      const d = await res.json();
+      showToast('Error: ' + d.error);
+    }
+  }
+
+  async function toggleFlashDeal(id, active) {
+    await fetch(`${API}/api/admin/flash-deals/${id}`, {
+      method: 'PUT', headers: headers(),
+      body: JSON.stringify({ active })
+    });
+    showToast(active ? '⚡ Deal activated!' : 'Deal deactivated');
+    loadFlashDeals();
+  }
+
+  async function deleteFlashDeal(id) {
+    if (!confirm('Delete this flash deal?')) return;
+    await fetch(`${API}/api/admin/flash-deals/${id}`, { method: 'DELETE', headers: headers() });
+    showToast('Flash deal deleted');
+    loadFlashDeals();
   }
 
 // BANNERS
