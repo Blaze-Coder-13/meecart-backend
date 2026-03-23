@@ -273,4 +273,56 @@ router.post('/push-token', async (req, res) => {
   }
 });
 
+// GET /api/auth/referral-stats
+router.get('/referral-stats', authMiddleware, async (req, res) => {
+  try {
+    const user = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    const currentUser = user.rows[0];
+
+    // How many people this user referred
+    const referred = await query(
+      'SELECT COUNT(*) as c FROM users WHERE referred_by = $1',
+      [currentUser.referral_code]
+    );
+
+    // How much discount this user got from referrals (as referrer)
+    const referrerCode = `REF${req.user.id}BONUS`;
+    const bonusCode = await query(
+      'SELECT * FROM promo_codes WHERE code = $1',
+      [referrerCode]
+    );
+
+    // Referral discount setting
+    const setting = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
+    const discountAmount = Number(setting.rows[0]?.value || 30);
+
+    // Who referred this user
+    let referredByUser = null;
+    if (currentUser.referred_by) {
+      const referrer = await query(
+        'SELECT name, phone FROM users WHERE referral_code = $1',
+        [currentUser.referred_by]
+      );
+      if (referrer.rows.length > 0) {
+        referredByUser = referrer.rows[0];
+      }
+    }
+
+    res.json({
+      referral_code: currentUser.referral_code,
+      referred_count: parseInt(referred.rows[0].c),
+      discount_per_referral: discountAmount,
+      total_earned: parseInt(referred.rows[0].c) * discountAmount,
+      bonus_code: bonusCode.rows.length > 0 && bonusCode.rows[0].active ? referrerCode : null,
+      bonus_amount: bonusCode.rows.length > 0 && bonusCode.rows[0].active ? discountAmount : 0,
+      referred_by: currentUser.referred_by,
+      referred_by_name: referredByUser?.name || null,
+      referred_by_phone: referredByUser?.phone || null,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
