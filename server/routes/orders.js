@@ -49,7 +49,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const userResult = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const currentUser = userResult.rows[0];
     const orderCount = await query('SELECT COUNT(*) as c FROM orders WHERE user_id = $1', [req.user.id]);
-      console.log(`📦 Order by user ${req.user.id}, referred_by: ${currentUser.referred_by}, order count: ${orderCount.rows[0].c}`);
+      console.log(`📦 Order by user ${req.user.id} (${currentUser.phone}), referred_by: "${currentUser.referred_by}", order count: ${orderCount.rows[0].c}, referral discount: ${referralDiscount}`);
 
 
     if (parseInt(orderCount.rows[0].c) === 0 && currentUser.referred_by) {
@@ -84,9 +84,9 @@ router.post('/', authMiddleware, async (req, res) => {
         const promo = promoResult.rows[0];
         if (subtotal >= promo.min_order_value) {
           if (promo.discount_type === 'flat') {
-            discount = promo.discount_value;
+            discount += promo.discount_value;
           } else {
-            discount = Math.round((subtotal * promo.discount_value) / 100);
+            discount += Math.round((subtotal * promo.discount_value) / 100);
           }
           await query('UPDATE promo_codes SET used_count = used_count + 1 WHERE id = $1', [promo.id]);
         }
