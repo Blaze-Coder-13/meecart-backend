@@ -852,7 +852,13 @@
         ${o.items.map(i => `
           <tr>
             <td>${i.product_id}</td>
-            <td>${i.image_emoji} ${i.name}</td>
+            <td>
+              ${i.image_url
+                ? `<img src="${i.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px" onerror="this.style.display='none'">`
+                : `<span style="margin-right:6px">${i.image_emoji}</span>`
+              }
+              ${i.name}
+            </td>
             <td>₹${i.price}</td>
             <td>₹${i.price}</td>
             <td>${i.quantity} ${i.unit}</td>
