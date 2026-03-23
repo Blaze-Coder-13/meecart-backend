@@ -46,19 +46,25 @@ router.post('/', authMiddleware, async (req, res) => {
 
     // Apply referral discount on first order
     let referralDiscount = 0;
+    const userResult = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    const currentUser = userResult.rows[0];
     const orderCount = await query('SELECT COUNT(*) as c FROM orders WHERE user_id = $1', [req.user.id]);
-    if (parseInt(orderCount.rows[0].c) === 0 && req.user.referred_by) {
+
+    if (parseInt(orderCount.rows[0].c) === 0 && currentUser.referred_by) {
       const referralDiscountSetting = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
       referralDiscount = Number(referralDiscountSetting.rows[0]?.value || 30);
 
-      // Also give discount to referrer on their next order
-      const referrer = await query('SELECT id FROM users WHERE referral_code = $1', [req.user.referred_by]);
+      // Give referrer a promo code for their next order
+      const referrer = await query('SELECT id, phone FROM users WHERE referral_code = $1', [currentUser.referred_by]);
       if (referrer.rows.length > 0) {
+        const referrerCode = `REF${referrer.rows[0].id}BONUS`;
         await query(`
           INSERT INTO promo_codes (code, discount_type, discount_value, min_order_value, max_uses, active)
           VALUES ($1, 'flat', $2, 0, 1, 1)
-          ON CONFLICT (code) DO NOTHING
-        `, [`REF_${referrer.rows[0].id}_${Date.now()}`, referralDiscount]);
+          ON CONFLICT (code) DO UPDATE SET used_count = 0, active = 1
+        `, [referrerCode, referralDiscount]);
+
+        console.log(`🎁 Referral bonus! User ${currentUser.phone} used ${currentUser.referred_by}. Referrer ${referrer.rows[0].phone} gets code ${referrerCode}`);
       }
     }
 

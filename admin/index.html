@@ -1296,15 +1296,15 @@ async function editCategory(id, name, icon, imageUrl) {
     document.getElementById('customersTable').innerHTML = `
       <table>
         <thead><tr>
-          <th>Phone</th><th>Name</th><th>Address</th><th>Referral Code</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
+          <th>Phone</th><th>Name</th><th>Referral Code</th><th>Referred By</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
         </tr></thead>
         <tbody>
           ${data.users.map(u => `
             <tr>
               <td><strong>${u.phone}</strong></td>
 <td>${u.name || '—'}</td>
-<td style="max-width:150px;font-size:12px">${u.address || '—'}</td>
 <td><code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:11px">${u.referral_code || '—'}</code></td>
+<td>${u.referred_by ? `<span style="background:#d8f3dc;padding:2px 6px;border-radius:4px;font-size:11px;color:#2d6a4f">${u.referred_by}</span>` : '—'}</td>
 <td>${u.order_count}</td>
               <td>₹${u.total_spent}</td>
               <td>${new Date(u.created_at).toLocaleDateString('en-IN')}</td>

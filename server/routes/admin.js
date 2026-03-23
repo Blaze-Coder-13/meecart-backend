@@ -11,7 +11,7 @@ router.get('/users', adminMiddleware, async (req, res) => {
     const offset = (page - 1) * limit;
 
     const result = await query(`
-      SELECT u.id, u.phone, u.name, u.address, u.role, u.referral_code, u.created_at,
+      SELECT u.id, u.phone, u.name, u.address, u.role, u.referral_code, u.referred_by, u.created_at,
              COUNT(o.id) as order_count,
              COALESCE(SUM(o.total), 0) as total_spent
       FROM users u
@@ -305,7 +305,7 @@ router.post('/promos/apply', async (req, res) => {
 router.get('/export/customers', adminMiddleware, async (req, res) => {
   try {
     const result = await query(`
-      SELECT u.phone, u.name, u.address, u.referral_code, u.created_at,
+      SELECT u.phone, u.name, u.address, u.referral_code, u.referred_by, u.created_at,
              COUNT(o.id) as order_count,
              COALESCE(SUM(o.total), 0) as total_spent
       FROM users u
@@ -315,9 +315,9 @@ router.get('/export/customers', adminMiddleware, async (req, res) => {
     `);
 
     const csv = [
-      'Phone,Name,Address,Referral Code,Orders,Total Spent,Joined',
+      'Phone,Name,Address,Referral Code,Referred By,Orders,Total Spent,Joined',
       ...result.rows.map(u =>
-        `${u.phone},"${u.name || ''}","${u.address || ''}",${u.referral_code || ''},${u.order_count},${u.total_spent},${u.created_at}`
+        `${u.phone},"${u.name || ''}","${u.address || ''}",${u.referral_code || ''},${u.referred_by || ''},${u.order_count},${u.total_spent},${u.created_at}`
       )
     ].join('\n');
 
