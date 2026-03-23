@@ -871,8 +871,16 @@
 <body>
   <div class="header">
     <div>
-      <div class="logo">🛒 Meecart</div>
-      <div style="font-size:13px;color:#6b7280;margin-top:4px">Order Invoice</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${document.getElementById('topbarLogo')?.src && document.getElementById('topbarLogo').style.display !== 'none'
+          ? `<img src="${document.getElementById('topbarLogo').src}" style="width:40px;height:40px;border-radius:8px;object-fit:contain">`
+          : '🛒'
+        }
+        <div>
+          <div class="logo">${document.getElementById('sidebarAppName')?.textContent || 'Meecart'}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px">Order Invoice</div>
+        </div>
+      </div>
     </div>
     <button class="print-btn" onclick="window.print()">🖨️ Print</button>
   </div>
