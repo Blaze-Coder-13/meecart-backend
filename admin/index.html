@@ -964,7 +964,7 @@
             ${banners.map(b => `
               <tr>
                 <td>${b.image_url ? `<img src="${b.image_url}" style="height:50px;border-radius:6px;object-fit:cover;max-width:100px" onerror="this.style.display='none'">` : '—'}</td>
-                <td style="max-width:200px;font-size:12px;word-break:break-all">${b.image_url || '—'}</td>
+                <td style="max-width:150px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.image_url || '—'}</td>
                 <td>
                   <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
                     <input type="checkbox" ${b.active ? 'checked' : ''} onchange="toggleBanner(${b.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
