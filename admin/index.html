@@ -451,6 +451,10 @@
               <label class="form-label">Emoji Icon</label>
               <input class="form-input" id="catIcon" placeholder="🥬" />
             </div>
+            <div class="form-group">
+              <label class="form-label">Image URL (optional)</label>
+              <input class="form-input" id="catImageUrl" placeholder="https://i.ibb.co/..." />
+            </div>
             <div class="form-group full">
               <button class="action-btn primary" onclick="addCategory()">+ Add Category</button>
             </div>
@@ -496,6 +500,10 @@
             <div class="form-group">
               <label class="form-label">Emoji Icon</label>
               <input class="form-input" id="pEmoji" placeholder="🥦" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Image URL (optional)</label>
+              <input class="form-input" id="pImageUrl" placeholder="https://i.ibb.co/..." />
             </div>
             <div class="form-group full">
               <label class="form-label">Description</label>
@@ -893,7 +901,13 @@
         <tbody>
           ${products.map(p => `
             <tr>
-              <td>${p.image_emoji} <strong>${p.name}</strong></td>
+              <td>
+                ${p.image_url
+                  ? `<img src="${p.image_url}" style="width:36px;height:36px;border-radius:6px;object-fit:cover;margin-right:6px;vertical-align:middle" onerror="this.style.display='none'">`
+                  : `<span style="font-size:24px;margin-right:6px">${p.image_emoji}</span>`
+                }
+                <strong>${p.name}</strong>
+              </td>
               <td>${p.category_name || '—'}</td>
               <td>₹${p.price}</td>
               <td>${p.unit}</td>
@@ -902,7 +916,7 @@
                   onchange="updateStock(${p.id}, this.value)" />
               </td>
               <td style="display:flex;gap:6px">
-                <button class="action-btn" onclick="editProduct(${p.id}, '${p.name}', ${p.price}, '${p.unit}', ${p.stock}, ${p.category_id || 0}, '${p.image_emoji}', '${p.description || ''}')">Edit</button>
+                <button class="action-btn" onclick="editProduct(${p.id}, '${p.name}', ${p.price}, '${p.unit}', ${p.stock}, ${p.category_id || 0}, '${p.image_emoji}', '${p.description || ''}', '${p.image_url || ''}')">Edit</button>
                 <button class="action-btn" style="color:var(--muted)" onclick="deactivateProduct(${p.id}, '${p.name}')">Remove</button>
               </td>
             </tr>`).join('')}
@@ -918,6 +932,7 @@
       stock: Number(document.getElementById('pStock').value) || 100,
       category_id: Number(document.getElementById('pCategory').value),
       image_emoji: document.getElementById('pEmoji').value || '🥦',
+      image_url: document.getElementById('pImageUrl').value || null,
       description: document.getElementById('pDesc').value,
     };
 
@@ -926,7 +941,7 @@
     const res = await fetch(`${API}/api/products`, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
     if (res.ok) {
       showToast(`✅ ${body.name} added!`);
-      ['pName','pPrice','pUnit','pStock','pEmoji','pDesc'].forEach(id => document.getElementById(id).value = '');
+      ['pName','pPrice','pUnit','pStock','pEmoji','pDesc','pImageUrl'].forEach(id => document.getElementById(id).value = '');
       loadProducts();
     } else {
       const d = await res.json();
@@ -1099,7 +1114,12 @@
         <tbody>
           ${cats.map(c => `
             <tr>
-              <td style="font-size:24px">${c.icon || '🥦'}</td>
+              <td>
+                ${c.image_url
+                  ? `<img src="${c.image_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover" onerror="this.style.display='none'">`
+                  : `<span style="font-size:24px">${c.icon || '🥦'}</span>`
+                }
+              </td>
               <td><strong>${c.name}</strong></td>
               <td>${c.product_count || 0}</td>
               <td><span class="status-badge ${c.active !== 0 ? 'status-delivered' : 'status-cancelled'}">${c.active !== 0 ? 'Active' : 'Hidden'}</span></td>
@@ -1108,7 +1128,7 @@
                   <input type="checkbox" ${c.active !== 0 ? 'checked' : ''} onchange="toggleCategory(${c.id}, this.checked ? 1 : 0)" style="width:16px;height:16px;cursor:pointer" />
                   <span style="font-size:12px">${c.active !== 0 ? 'Active' : 'Hidden'}</span>
                 </label>
-                <button class="action-btn" onclick="editCategory(${c.id}, '${c.name}', '${c.icon}')">Edit</button>
+                <button class="action-btn" onclick="editCategory(${c.id}, '${c.name}', '${c.icon}', '${c.image_url || ''}')">Edit</button>
                 <button class="action-btn" style="color:var(--muted)" onclick="deleteCategory(${c.id}, '${c.name}')">Delete</button>
               </td>
             </tr>`).join('')}
@@ -1122,16 +1142,18 @@
 
     if (!name) { showToast('Category name is required'); return; }
 
+    const image_url = document.getElementById('catImageUrl').value.trim() || null;
     const res = await fetch(`${API}/api/admin/categories`, {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ name, icon })
+      body: JSON.stringify({ name, icon, image_url })
     });
 
     if (res.ok) {
       showToast(`✅ ${name} added!`);
       document.getElementById('catName').value = '';
       document.getElementById('catIcon').value = '';
+      document.getElementById('catImageUrl').value = '';
       loadCategories();
     } else {
       const d = await res.json();
@@ -1156,20 +1178,21 @@
     loadCategories();
   }
 
-async function editCategory(id, name, icon) {
+async function editCategory(id, name, icon, imageUrl) {
     const newName = prompt('Category name:', name);
     if (!newName) return;
     const newIcon = prompt('Emoji icon:', icon);
+    const newImageUrl = prompt('Image URL (leave empty to keep emoji):', imageUrl || '');
     await fetch(`${API}/api/admin/categories/${id}`, {
       method: 'PUT',
       headers: headers(),
-      body: JSON.stringify({ name: newName, icon: newIcon || icon })
+      body: JSON.stringify({ name: newName, icon: newIcon || icon, image_url: newImageUrl || null })
     });
     showToast('Category updated');
     loadCategories();
   }
 
-  async function editProduct(id, name, price, unit, stock, categoryId, emoji, description) {
+  async function editProduct(id, name, price, unit, stock, categoryId, emoji, description, imageUrl) {
     const newName = prompt('Product name:', name);
     if (!newName) return;
     const newPrice = prompt('Price (₹):', price);
@@ -1177,6 +1200,7 @@ async function editCategory(id, name, icon) {
     const newUnit = prompt('Unit:', unit);
     const newStock = prompt('Stock:', stock);
     const newEmoji = prompt('Emoji:', emoji);
+    const newImageUrl = prompt('Image URL (leave empty to keep emoji):', imageUrl || '');
 
     const res = await fetch(`${API}/api/products/${id}`, {
       method: 'PUT',
@@ -1188,6 +1212,7 @@ async function editCategory(id, name, icon) {
         stock: Number(newStock) || stock,
         category_id: categoryId,
         image_emoji: newEmoji || emoji,
+        image_url: newImageUrl || null,
         description: description,
         active: 1
       })

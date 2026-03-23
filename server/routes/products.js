@@ -70,15 +70,15 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/products (admin)
 router.post('/', adminMiddleware, async (req, res) => {
-  const { name, description, price, unit, stock, category_id, image_emoji } = req.body;
+  const { name, description, price, unit, stock, category_id, image_emoji, image_url } = req.body;
   if (!name || !price) {
     return res.status(400).json({ error: 'Name and price are required' });
   }
   try {
     const result = await query(`
-      INSERT INTO products (name, description, price, unit, stock, category_id, image_emoji)
-      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
-    `, [name, description, price, unit || 'kg', stock || 100, category_id, image_emoji || '🥦']);
+      INSERT INTO products (name, description, price, unit, stock, category_id, image_emoji, image_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *
+    `, [name, description, price, unit || 'kg', stock || 100, category_id, image_emoji || '🥦', image_url || null]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -87,13 +87,13 @@ router.post('/', adminMiddleware, async (req, res) => {
 
 // PUT /api/products/:id (admin)
 router.put('/:id', adminMiddleware, async (req, res) => {
-  const { name, description, price, unit, stock, category_id, image_emoji, active } = req.body;
+  const { name, description, price, unit, stock, category_id, image_emoji, image_url, active } = req.body;
   try {
     await query(`
       UPDATE products SET name=$1, description=$2, price=$3, unit=$4,
-      stock=$5, category_id=$6, image_emoji=$7, active=$8 WHERE id=$9
+      stock=$5, category_id=$6, image_emoji=$7, active=$8, image_url=$9 WHERE id=$10
     `, [name, description, price, unit, stock, category_id, image_emoji,
-        active !== undefined ? active : 1, req.params.id]);
+        active !== undefined ? active : 1, image_url || null, req.params.id]);
     const result = await query('SELECT * FROM products WHERE id = $1', [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {

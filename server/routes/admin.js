@@ -95,10 +95,10 @@ router.get('/categories/all', adminMiddleware, async (req, res) => {
 });
 
 router.post('/categories', adminMiddleware, async (req, res) => {
-  const { name, icon } = req.body;
+  const { name, icon, image_url } = req.body;
   if (!name) return res.status(400).json({ error: 'Category name required' });
   try {
-    const result = await query('INSERT INTO categories (name, icon) VALUES ($1, $2) RETURNING *', [name, icon || '🥦']);
+    const result = await query('INSERT INTO categories (name, icon, image_url) VALUES ($1, $2, $3) RETURNING *', [name, icon || '🥦', image_url || null]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -106,15 +106,16 @@ router.post('/categories', adminMiddleware, async (req, res) => {
 });
 
 router.put('/categories/:id', adminMiddleware, async (req, res) => {
-  const { name, icon, active } = req.body;
+  const { name, icon, active, image_url } = req.body;
   try {
     await query(`
       UPDATE categories SET
         name = COALESCE($1, name),
         icon = COALESCE($2, icon),
-        active = COALESCE($3, active)
-      WHERE id = $4
-    `, [name || null, icon || null, active !== undefined ? active : null, req.params.id]);
+        active = COALESCE($3, active),
+        image_url = COALESCE($4, image_url)
+      WHERE id = $5
+    `, [name || null, icon || null, active !== undefined ? active : null, image_url || null, req.params.id]);
     const result = await query('SELECT * FROM categories WHERE id = $1', [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
