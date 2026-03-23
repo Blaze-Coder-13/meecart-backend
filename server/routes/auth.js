@@ -111,6 +111,8 @@ router.post('/signup', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
     `, [phone, name.trim(), address.trim(), hashedPassword, myReferralCode, referral_code || null]);
 
+    console.log(`✅ New user registered: ${phone}, referred_by: ${referral_code || 'none'}`);
+
     const user = result.rows[0];
     const token = generateToken(user);
 
