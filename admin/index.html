@@ -872,10 +872,11 @@
   <div class="header">
     <div>
       <div style="display:flex;align-items:center;gap:10px">
-        ${document.getElementById('topbarLogo')?.src && document.getElementById('topbarLogo').style.display !== 'none'
-          ? `<img src="${document.getElementById('topbarLogo').src}" style="width:40px;height:40px;border-radius:8px;object-fit:contain">`
-          : '🛒'
-        }
+        <img 
+          src="${document.getElementById('topbarLogo')?.src || '/assets/logo.png'}" 
+          style="width:50px;height:50px;border-radius:10px;object-fit:contain"
+          onerror="this.style.display='none'"
+        />
         <div>
           <div class="logo">${document.getElementById('sidebarAppName')?.textContent || 'Meecart'}</div>
           <div style="font-size:13px;color:#6b7280;margin-top:4px">Order Invoice</div>
@@ -1435,17 +1436,22 @@ async function editCategory(id, name, icon, imageUrl) {
     const appName = data['app_name'] || 'Meecart';
     const logoUrl = data['app_logo_url'];
     document.getElementById('sidebarAppName').textContent = appName;
-    if (logoUrl) {
-      document.getElementById('sidebarLogo').innerHTML = `
-        <img src="${logoUrl}" style="width:36px;height:36px;border-radius:8px;object-fit:contain;margin-right:8px;vertical-align:middle" onerror="this.style.display='none'">
-        <span>${appName}</span>
-        <span style="opacity:0.6;font-size:12px;display:block;font-family:'DM Sans',sans-serif;margin-top:4px">Admin Panel</span>
-      `;
-    }
+
+    // Always update sidebar with logo or fallback
+    document.getElementById('sidebarLogo').innerHTML = `
+      <img src="${logoUrl || '/assets/logo.png'}" 
+        style="width:36px;height:36px;border-radius:8px;object-fit:contain;margin-right:8px;vertical-align:middle"
+        onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 rx=%228%22 fill=%22%2352b788%22/><text x=%2250%%22 y=%2255%%22 text-anchor=%22middle%22 font-size=%2220%22>🛒</text></svg>'">
+      <span>${appName}</span>
+      <span style="opacity:0.6;font-size:12px;display:block;font-family:'DM Sans',sans-serif;margin-top:4px">Admin Panel</span>
+    `;
+
     // Update topbar logo
-    if (logoUrl) {
-      const topbarLogo = document.getElementById('topbarLogo');
-      if (topbarLogo) { topbarLogo.src = logoUrl; topbarLogo.style.display = 'block'; }
+    const topbarLogo = document.getElementById('topbarLogo');
+    if (topbarLogo) {
+      topbarLogo.src = logoUrl || '/assets/logo.png';
+      topbarLogo.style.display = 'block';
+      topbarLogo.onerror = () => topbarLogo.style.display = 'none';
     }
   }
 
