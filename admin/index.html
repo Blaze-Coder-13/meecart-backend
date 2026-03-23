@@ -556,6 +556,10 @@
               <label class="form-label">Free Delivery Message</label>
               <input class="form-input" id="set_delivery_message" placeholder="Add ₹{amount} more for free delivery!" />
             </div>
+            <div class="form-group">
+              <label class="form-label">Referral Discount (₹)</label>
+              <input class="form-input" type="number" id="set_referral_discount" placeholder="30" />
+            </div>
             <div class="form-group full">
               <button class="action-btn primary" onclick="saveSettings()">Save Delivery Settings</button>
             </div>
@@ -1259,7 +1263,7 @@ async function editCategory(id, name, icon, imageUrl) {
     const res = await fetch(`${API}/api/admin/settings`, { headers: headers() });
     const data = await res.json();
 
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','app_name','app_contact_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_contact_email','app_contact_phone','app_contact_address'];
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);
       if (el && data[key]) el.value = data[key];
@@ -1267,7 +1271,7 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   async function saveSettings() {
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','app_name','app_contact_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_contact_email','app_contact_phone','app_contact_address'];
     const updates = {};
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);

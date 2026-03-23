@@ -207,6 +207,7 @@ async function seedSettings() {
     ['app_contact_phone', '+91 9999999999'],
     ['app_contact_address', 'Your city, State'],
     ['app_name', 'Meecart'],
+    ['referral_discount', '30'],
   ];
 
   for (const [key, value] of settingsData) {

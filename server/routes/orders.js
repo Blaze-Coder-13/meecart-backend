@@ -44,8 +44,26 @@ router.post('/', authMiddleware, async (req, res) => {
       validatedItems.push({ product, quantity: item.quantity, price: product.price });
     }
 
+    // Apply referral discount on first order
+    let referralDiscount = 0;
+    const orderCount = await query('SELECT COUNT(*) as c FROM orders WHERE user_id = $1', [req.user.id]);
+    if (parseInt(orderCount.rows[0].c) === 0 && req.user.referred_by) {
+      const referralDiscountSetting = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
+      referralDiscount = Number(referralDiscountSetting.rows[0]?.value || 30);
+
+      // Also give discount to referrer on their next order
+      const referrer = await query('SELECT id FROM users WHERE referral_code = $1', [req.user.referred_by]);
+      if (referrer.rows.length > 0) {
+        await query(`
+          INSERT INTO promo_codes (code, discount_type, discount_value, min_order_value, max_uses, active)
+          VALUES ($1, 'flat', $2, 0, 1, 1)
+          ON CONFLICT (code) DO NOTHING
+        `, [`REF_${referrer.rows[0].id}_${Date.now()}`, referralDiscount]);
+      }
+    }
+
     // Apply promo code
-    let discount = 0;
+    let discount = referralDiscount;
     if (promo_code) {
       const promoResult = await query(`
         SELECT * FROM promo_codes
