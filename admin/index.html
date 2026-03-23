@@ -1172,10 +1172,14 @@
   }
 
   async function deleteCategory(id, name) {
-    if (!confirm(`Delete "${name}"? Products in this category will be hidden.`)) return;
-    await fetch(`${API}/api/admin/categories/${id}`, { method: 'DELETE', headers: headers() });
-    showToast(`${name} deleted`);
-    loadCategories();
+    if (!confirm(`Delete "${name}" permanently? Products in this category will be hidden.`)) return;
+    const res = await fetch(`${API}/api/admin/categories/${id}`, { method: 'DELETE', headers: headers() });
+    if (res.ok) {
+      showToast(`✅ ${name} deleted!`);
+      loadCategories();
+    } else {
+      showToast('Error deleting category');
+    }
   }
 
 async function editCategory(id, name, icon, imageUrl) {
