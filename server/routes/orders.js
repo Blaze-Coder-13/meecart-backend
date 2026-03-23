@@ -49,6 +49,8 @@ router.post('/', authMiddleware, async (req, res) => {
     const userResult = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const currentUser = userResult.rows[0];
     const orderCount = await query('SELECT COUNT(*) as c FROM orders WHERE user_id = $1', [req.user.id]);
+      console.log(`📦 Order by user ${req.user.id}, referred_by: ${currentUser.referred_by}, order count: ${orderCount.rows[0].c}`);
+
 
     if (parseInt(orderCount.rows[0].c) === 0 && currentUser.referred_by) {
       const referralDiscountSetting = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
