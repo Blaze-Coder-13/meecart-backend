@@ -334,7 +334,7 @@ router.get('/export/customers', adminMiddleware, async (req, res) => {
 router.get('/flash-deals', adminMiddleware, async (req, res) => {
   try {
     const result = await query(`
-      SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price
+            SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price, p.unit as original_unit
       FROM flash_deals fd
       JOIN products p ON fd.product_id = p.id
       ORDER BY fd.created_at DESC
@@ -385,7 +385,7 @@ router.delete('/flash-deals/:id', adminMiddleware, async (req, res) => {
 router.get('/flash-deals/public', async (req, res) => {
   try {
     const result = await query(`
-      SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price, p.unit as original_unit
+            SELECT fd.*, p.name as product_name, p.image_emoji, p.image_url, p.price as original_price, p.unit as original_unit
       FROM flash_deals fd
       JOIN products p ON fd.product_id = p.id
       WHERE fd.active = 1 AND fd.expires_at > NOW()

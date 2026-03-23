@@ -379,13 +379,9 @@
               <label class="form-label">Deal Price (₹) *</label>
               <input class="form-input" type="number" id="fdPrice" placeholder="e.g. 1" />
             </div>
-            <div class="form-group">
-              <label class="form-label">Quantity per Deal</label>
-              <input class="form-input" type="number" id="fdQuantity" placeholder="e.g. 1" value="1" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Unit</label>
-              <input class="form-input" id="fdUnit" placeholder="kg, piece, bunch..." />
+            <div class="form-group full">
+              <label class="form-label">Deal Description (optional)</label>
+              <input class="form-input" id="fdUnit" placeholder="e.g. 500gm, 1 bunch, 2 pieces — leave empty to use product unit" />
             </div>
             <div class="form-group">
               <label class="form-label">Max per Order</label>
@@ -1058,7 +1054,7 @@
                 <td>${d.image_url ? `<img src="${d.image_url}" style="width:30px;height:30px;border-radius:4px;object-fit:cover;margin-right:6px;vertical-align:middle">` : d.image_emoji} <strong>${d.product_name}</strong></td>
                 <td><strong style="color:var(--green)">₹${d.deal_price}</strong></td>
                 <td><span style="text-decoration:line-through;color:var(--muted)">₹${d.original_price}</span></td>
-                <td>${d.deal_quantity} ${d.deal_unit}</td>
+                <td>${d.deal_unit || d.original_unit || '—'}</td>
                 <td>${d.max_per_order} per order</td>
                 <td style="font-size:12px">${expired ? '<span style="color:red">Expired</span>' : `<span style="color:var(--green)">${timeLeft}</span>`}</td>
                 <td>
@@ -1087,8 +1083,8 @@
   async function addFlashDeal() {
     const product_id = document.getElementById('fdProduct').value;
     const deal_price = document.getElementById('fdPrice').value;
-    const deal_quantity = document.getElementById('fdQuantity').value || 1;
-    const deal_unit = document.getElementById('fdUnit').value || 'kg';
+    const deal_quantity = 1;
+    const deal_unit = document.getElementById('fdUnit').value || '';
     const max_per_order = document.getElementById('fdMaxPerOrder').value || 1;
     const days = document.getElementById('fdDays').value;
 
