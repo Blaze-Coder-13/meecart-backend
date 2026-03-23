@@ -1200,14 +1200,23 @@ async function editCategory(id, name, icon) {
     }
   }
 
-  function exportCSV() {
-    const link = document.createElement('a');
-    link.href = `${API}/api/admin/export/customers`;
-    link.setAttribute('download', 'meecart-customers.csv');
-    link.setAttribute('Authorization', token);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async function exportCSV() {
+    try {
+      const res = await fetch(`${API}/api/admin/export/customers`, { headers: headers() });
+      if (!res.ok) { showToast('Export failed'); return; }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'meecart-customers.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showToast('✅ CSV downloaded!');
+    } catch {
+      showToast('Export failed');
+    }
   }
 
 // SETTINGS
