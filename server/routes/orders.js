@@ -237,7 +237,7 @@ async function getOrderWithItems(orderId) {
   if (orderResult.rows.length === 0) return null;
 
   const itemsResult = await query(`
-    SELECT oi.*, oi.product_id, p.name, p.image_emoji, p.unit
+    SELECT oi.*, oi.product_id, p.name, p.image_emoji, p.image_url, p.unit
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     WHERE oi.order_id = $1
