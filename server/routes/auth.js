@@ -274,8 +274,7 @@ router.post('/push-token', async (req, res) => {
   }
 });
 
-// GET /api/auth/notifications
-router.get('/notifications', authMiddleware, async (req, res) => {
+async function getAnnouncements(req, res) {
   try {
     const result = await query(`
       SELECT id, title, body, image_url, created_at
@@ -288,7 +287,13 @@ router.get('/notifications', authMiddleware, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
-});
+}
+
+// GET /api/auth/announcements
+router.get('/announcements', authMiddleware, getAnnouncements);
+
+// Backward-compatible alias
+router.get('/notifications', authMiddleware, getAnnouncements);
 
 // GET /api/auth/referral-stats
 router.get('/referral-stats', authMiddleware, async (req, res) => {

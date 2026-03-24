@@ -1593,7 +1593,7 @@ async function editCategory(id, name, icon, imageUrl) {
 
     if (!confirm(`Send "${title}" to ALL customers?`)) return;
 
-    const res = await fetch(`${API}/api/admin/notifications/broadcast`, {
+    const res = await fetch(`${API}/api/admin/announcements/broadcast`, {
       method: 'POST',
       headers: headers(),
       body: JSON.stringify({ title, body, image_url: image_url || null })
@@ -1614,7 +1614,7 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   async function loadNotifHistory() {
-    const res = await fetch(`${API}/api/admin/notifications`, { headers: headers() });
+    const res = await fetch(`${API}/api/admin/announcements`, { headers: headers() });
     const data = await res.json();
 
     document.getElementById('notifHistory').innerHTML = data.length === 0

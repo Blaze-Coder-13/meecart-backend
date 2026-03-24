@@ -399,16 +399,16 @@ router.get('/flash-deals/public', async (req, res) => {
 
 // ── NOTIFICATIONS ─────────────────────────────────────
 
-router.get('/notifications', adminMiddleware, async (req, res) => {
+async function getAnnouncements(req, res) {
   try {
     const result = await query('SELECT * FROM notification_logs ORDER BY created_at DESC LIMIT 50');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
-});
+}
 
-router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
+async function sendAnnouncement(req, res) {
   const { title, body, image_url } = req.body;
   if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
 
@@ -460,6 +460,12 @@ router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
-});
+}
+
+router.get('/announcements', adminMiddleware, getAnnouncements);
+router.get('/notifications', adminMiddleware, getAnnouncements);
+
+router.post('/announcements/broadcast', adminMiddleware, sendAnnouncement);
+router.post('/notifications/broadcast', adminMiddleware, sendAnnouncement);
 
 module.exports = router;
