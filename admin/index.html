@@ -42,7 +42,12 @@
 
     .sidebar-logo span { opacity: 0.6; font-size: 12px; display: block; font-family: 'DM Sans', sans-serif; margin-top: 4px; }
 
-    .sidebar-nav { flex: 1; padding: 16px 0; }
+    .sidebar-nav {
+      flex: 1;
+      padding: 16px 0 24px;
+      overflow-y: auto;
+      min-height: 0;
+    }
 
     .nav-item {
       display: flex;
@@ -64,6 +69,7 @@
     .sidebar-footer {
       padding: 16px 20px;
       border-top: 1px solid rgba(255,255,255,0.1);
+      flex-shrink: 0;
     }
 
     .logout-btn {
