@@ -148,6 +148,15 @@ async function initSchema() {
       sent_count INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS order_status_logs (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   await seedData();

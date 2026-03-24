@@ -4,6 +4,24 @@ const { query } = require('../db');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { sendPushToUser, sendPushToAdmins } = require('../utils/notify');
 
+const STATUS_MESSAGES = {
+  pending: { title: 'Order Placed', message: 'Your order has been placed successfully.' },
+  confirmed: { title: 'Order Confirmed', message: 'Your order has been confirmed.' },
+  packing: { title: 'Packing Started', message: 'Your order is being packed.' },
+  out_for_delivery: { title: 'Out for Delivery', message: 'Your order is out for delivery.' },
+  delivered: { title: 'Order Delivered', message: 'Your order has been delivered. Please pay on delivery.' },
+  cancelled: { title: 'Order Cancelled', message: 'Your order has been cancelled.' },
+};
+
+async function logOrderStatus(orderId, status) {
+  const entry = STATUS_MESSAGES[status];
+  if (!entry) return;
+  await query(
+    'INSERT INTO order_status_logs (order_id, status, title, message) VALUES ($1, $2, $3, $4)',
+    [orderId, status, entry.title, entry.message]
+  );
+}
+
 // POST /api/orders
 router.post('/', authMiddleware, async (req, res) => {
   const { items, address, notes, promo_code } = req.body;
@@ -110,6 +128,8 @@ router.post('/', authMiddleware, async (req, res) => {
         VALUES ($1, $2, $3, $4)
       `, [orderId, item.product.id, item.quantity, item.price]);
     }
+
+    await logOrderStatus(orderId, 'pending');
 
     const order = await getOrderWithItems(orderId);
 
@@ -228,14 +248,15 @@ router.put('/:id/status', adminMiddleware, async (req, res) => {
     await query(text, params);
     const result = await query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     const updatedOrder = result.rows[0];
+    await logOrderStatus(updatedOrder.id, status);
 
     // Notify customer of status change
     const statusMessages = {
-      confirmed: '✅ Your order has been confirmed!',
-      packing: '📦 Your order is being packed!',
-      out_for_delivery: '🛵 Your order is out for delivery!',
-      delivered: '🎉 Your order has been delivered! Pay on delivery.',
-      cancelled: '❌ Your order has been cancelled.',
+      confirmed: 'Your order has been confirmed!',
+      packing: 'Your order is being packed!',
+      out_for_delivery: 'Your order is out for delivery!',
+      delivered: 'Your order has been delivered! Pay on delivery.',
+      cancelled: 'Your order has been cancelled.',
     };
 
     if (statusMessages[status]) {
@@ -269,7 +290,14 @@ async function getOrderWithItems(orderId) {
     WHERE oi.order_id = $1
   `, [orderId]);
 
-  return { ...orderResult.rows[0], items: itemsResult.rows };
+  const updatesResult = await query(`
+    SELECT id, status, title, message, created_at
+    FROM order_status_logs
+    WHERE order_id = $1
+    ORDER BY created_at DESC
+  `, [orderId]);
+
+  return { ...orderResult.rows[0], items: itemsResult.rows, updates: updatesResult.rows };
 }
 
 module.exports = router;
