@@ -688,10 +688,6 @@
               <input class="form-input" id="set_app_contact_email" placeholder="support@meecart.com" />
             </div>
             <div class="form-group">
-              <label class="form-label">Admin Alert Email</label>
-              <input class="form-input" id="set_admin_alert_email" placeholder="orders@meecart.com" />
-            </div>
-            <div class="form-group">
               <label class="form-label">Support Phone</label>
               <input class="form-input" id="set_app_contact_phone" placeholder="+91 9999999999" />
             </div>
@@ -1647,7 +1643,7 @@ async function editCategory(id, name, icon, imageUrl) {
     const res = await fetch(`${API}/api/admin/settings`, { headers: headers() });
     const data = await res.json();
 
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','admin_alert_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);
       if (el && data[key]) el.value = data[key];
@@ -1676,7 +1672,7 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   async function saveSettings() {
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','admin_alert_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
     const updates = {};
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);
