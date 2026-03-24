@@ -12,8 +12,43 @@ function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function sendSMS(phone, code, purpose) {
+async function sendSMS(phone, code, purpose) {
   console.log(`\n📱 OTP for ${phone} [${purpose}]: ${code}\n`);
+
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey) {
+    console.log('⚠️ FAST2SMS_API_KEY not set — OTP only in logs');
+    return;
+  }
+
+  const message = purpose === 'forgot'
+    ? `Your Meecart password reset OTP is ${code}. Valid for 5 minutes. Do not share with anyone.`
+    : `Welcome to Meecart! Your verification OTP is ${code}. Valid for 5 minutes.`;
+
+  try {
+    const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: {
+        'authorization': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        route: 'q',
+        message: message,
+        language: 'english',
+        flash: 0,
+        numbers: phone,
+      }),
+    });
+    const data = await res.json();
+    if (data.return) {
+      console.log(`✅ SMS sent to ${phone}`);
+    } else {
+      console.log(`❌ SMS failed: ${JSON.stringify(data)}`);
+    }
+  } catch (err) {
+    console.error('SMS error:', err);
+  }
 }
 
 // POST /api/auth/send-otp
