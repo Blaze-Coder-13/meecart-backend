@@ -329,6 +329,7 @@
     </div>
     <h1 id="pageTitle">Dashboard</h1>
     <div class="topbar-actions">
+      <button class="refresh-btn" id="enableNotifBtn" onclick="enableAdminNotifications()">🔔 Enable Notifications</button>
       <button class="refresh-btn" onclick="refreshCurrent()">↻ Refresh</button>
     </div>
   </div>
@@ -764,6 +765,26 @@
       try {
         await Notification.requestPermission();
       } catch {}
+    }
+  }
+
+  async function enableAdminNotifications() {
+    if (!('Notification' in window)) {
+      showToast('This browser does not support notifications');
+      return;
+    }
+
+    notificationPermissionAsked = false;
+    await ensureBrowserNotificationPermission();
+
+    if (Notification.permission === 'granted') {
+      showToast('Admin notifications enabled');
+      const btn = document.getElementById('enableNotifBtn');
+      if (btn) btn.textContent = '🔔 Notifications Enabled';
+    } else if (Notification.permission === 'denied') {
+      showToast('Notifications are blocked in this browser');
+    } else {
+      showToast('Notification permission not granted');
     }
   }
 
@@ -1642,7 +1663,6 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   // Init
-  ensureBrowserNotificationPermission();
   loadDashboard();
   loadSettings(); // Load branding on startup
   startAdminOrderPolling();
