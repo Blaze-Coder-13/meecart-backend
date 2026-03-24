@@ -239,6 +239,7 @@ async function seedSettings() {
     ['delivery_time', '7:00 AM - 12:00 PM'],
     ['delivery_days', 'Monday to Saturday'],
     ['app_contact_email', 'support@meecart.com'],
+    ['admin_alert_email', 'support@meecart.com'],
     ['app_contact_phone', '+91 9999999999'],
     ['app_contact_address', 'Your city, State'],
     ['app_name', 'Meecart'],

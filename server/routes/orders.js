@@ -3,6 +3,7 @@ const router = express.Router();
 const { query } = require('../db');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { sendPushToUser, sendPushToAdmins } = require('../utils/notify');
+const { sendEmail } = require('../utils/email');
 
 const STATUS_MESSAGES = {
   pending: { title: 'Order Placed', message: 'Your order has been placed successfully.' },
@@ -20,6 +21,37 @@ async function logOrderStatus(orderId, status) {
     'INSERT INTO order_status_logs (order_id, status, title, message) VALUES ($1, $2, $3, $4)',
     [orderId, status, entry.title, entry.message]
   );
+}
+
+async function sendAdminOrderEmail({ settings, total, orderId, customerPhone, address, itemCount }) {
+  const adminEmail = settings.admin_alert_email || settings.app_contact_email;
+  if (!adminEmail) return;
+
+  const subject = `New Meecart Order #${orderId}`;
+  const text = [
+    'A new order has been placed on Meecart.',
+    `Order ID: #${orderId}`,
+    `Customer: ${customerPhone}`,
+    `Items: ${itemCount}`,
+    `Total: INR ${total}`,
+    `Address: ${address}`,
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937">
+      <h2 style="margin:0 0 12px;color:#2d6a4f">New Meecart Order</h2>
+      <p style="margin:0 0 12px">A new order has been placed.</p>
+      <table style="border-collapse:collapse">
+        <tr><td style="padding:6px 12px 6px 0"><strong>Order ID</strong></td><td>#${orderId}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Customer</strong></td><td>${customerPhone}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Items</strong></td><td>${itemCount}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Total</strong></td><td>INR ${total}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Address</strong></td><td>${address}</td></tr>
+      </table>
+    </div>
+  `;
+
+  await sendEmail({ to: adminEmail, subject, text, html });
 }
 
 // POST /api/orders
@@ -138,6 +170,15 @@ router.post('/', authMiddleware, async (req, res) => {
       '🛒 New Order!',
       `New order of ₹${total} received from ${req.user.phone}`
     );
+
+    await sendAdminOrderEmail({
+      settings,
+      total,
+      orderId,
+      customerPhone: req.user.phone,
+      address: address.trim(),
+      itemCount: validatedItems.length,
+    });
 
     res.status(201).json({ message: 'Order placed successfully', order });
   } catch (err) {
