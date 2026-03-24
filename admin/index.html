@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin – Meecart</title>
+  <meta name="theme-color" content="#1b4332" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Meecart Admin" />
+  <link rel="manifest" href="/admin/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/assets/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -251,6 +257,13 @@
     }
 
     .refresh-btn:hover { border-color: var(--green); color: var(--green); }
+    .install-btn {
+      display: none;
+      background: var(--green);
+      border-color: var(--green);
+      color: white;
+    }
+    .install-btn:hover { background: #245a3f; border-color: #245a3f; color: white; }
 
     .badge-count {
       background: #ef4444;
@@ -335,6 +348,7 @@
     </div>
     <h1 id="pageTitle">Dashboard</h1>
     <div class="topbar-actions">
+      <button class="refresh-btn install-btn" id="installAdminBtn" onclick="installAdminApp()">📲 Install App</button>
       <button class="refresh-btn" id="enableNotifBtn" onclick="enableAdminNotifications()">🔔 Enable Notifications</button>
       <button class="refresh-btn" onclick="refreshCurrent()">↻ Refresh</button>
     </div>
@@ -728,12 +742,33 @@
   const ADMIN_LAST_SEEN_ORDER_KEY = 'meecart_admin_last_seen_order_id';
   let adminOrderPollHandle = null;
   let notificationPermissionAsked = false;
+  let deferredInstallPrompt = null;
 
   if (!token || !user || user.role !== 'admin') {
     window.location.href = '/login.html';
   }
 
   let currentSection = 'dashboard';
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).catch(() => {});
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    const btn = document.getElementById('installAdminBtn');
+    if (btn) btn.style.display = 'inline-flex';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    const btn = document.getElementById('installAdminBtn');
+    if (btn) btn.style.display = 'none';
+    showToast('Admin app installed');
+  });
 
   function headers() {
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -768,6 +803,19 @@
   }
 
   function refreshCurrent() { showSection(currentSection); }
+
+  async function installAdminApp() {
+    if (!deferredInstallPrompt) {
+      showToast('Use your browser menu and tap Add to Home Screen');
+      return;
+    }
+
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    const btn = document.getElementById('installAdminBtn');
+    if (btn) btn.style.display = 'none';
+  }
 
   function showToast(msg) {
     const t = document.getElementById('toast');
