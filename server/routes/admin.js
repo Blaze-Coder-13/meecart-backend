@@ -409,7 +409,7 @@ router.get('/notifications', adminMiddleware, async (req, res) => {
 });
 
 router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
-  const { title, body } = req.body;
+  const { title, body, image_url } = req.body;
   if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
 
   try {
@@ -436,7 +436,7 @@ router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
           sound: 'default',
           title,
           body,
-          data: { type: 'broadcast' },
+          data: { type: 'broadcast', image_url: image_url || null },
         }));
 
         await fetch('https://exp.host/--/api/v2/push/send', {
@@ -451,8 +451,8 @@ router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
 
     // Log the notification
     await query(
-      'INSERT INTO notification_logs (title, body, sent_count) VALUES ($1, $2, $3)',
-      [title, body, sent]
+      'INSERT INTO notification_logs (title, body, image_url, sent_count) VALUES ($1, $2, $3, $4)',
+      [title, body, image_url || null, sent]
     );
 
     res.json({ message: 'Notification sent', sent });

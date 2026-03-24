@@ -145,6 +145,7 @@ async function initSchema() {
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       body TEXT NOT NULL,
+      image_url TEXT,
       sent_count INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -157,6 +158,11 @@ async function initSchema() {
       message TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  await db.query(`
+    ALTER TABLE notification_logs
+    ADD COLUMN IF NOT EXISTS image_url TEXT
   `);
 
   await seedData();

@@ -278,7 +278,7 @@ router.post('/push-token', async (req, res) => {
 router.get('/notifications', authMiddleware, async (req, res) => {
   try {
     const result = await query(`
-      SELECT id, title, body, created_at
+      SELECT id, title, body, image_url, created_at
       FROM notification_logs
       ORDER BY created_at DESC
       LIMIT 50

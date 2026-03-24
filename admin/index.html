@@ -314,8 +314,8 @@
     <div class="nav-item" onclick="showSection('customers')">
       <span class="nav-icon">👥</span> Customers
     </div>
-    <div class="nav-item" onclick="showSection('notifications')">
-      <span class="nav-icon">🔔</span> Notifications
+    <div class="nav-item" onclick="showSection('announcements')">
+      <span class="nav-icon">📢</span> Announcements
     </div>
     <div class="nav-item" onclick="showSection('settings')">
       <span class="nav-icon">⚙️</span> Settings
@@ -583,16 +583,16 @@
       </div>
     </div>
 
-<!-- NOTIFICATIONS -->
-    <div class="page-section" id="section-notifications">
+<!-- ANNOUNCEMENTS -->
+    <div class="page-section" id="section-announcements">
       <div class="panel" style="margin-bottom:24px">
         <div class="panel-header">
-          <div class="panel-title">🔔 Send Notification to All Customers</div>
+          <div class="panel-title">📢 Send Announcement to All Customers</div>
         </div>
         <div style="padding:24px">
           <div class="form-grid">
             <div class="form-group full">
-              <label class="form-label">Notification Title *</label>
+              <label class="form-label">Announcement Title *</label>
               <input class="form-input" id="notifTitle" placeholder="e.g. 🎉 Special Offer Today!" />
             </div>
             <div class="form-group full">
@@ -600,7 +600,19 @@
               <textarea class="form-input" id="notifBody" placeholder="e.g. Get 20% off on all vegetables today! Use code SAVE20" rows="3" style="resize:vertical"></textarea>
             </div>
             <div class="form-group full">
-              <button class="action-btn primary" onclick="sendBroadcast()">📣 Send to All Customers</button>
+              <label class="form-label">Image URL (optional)</label>
+              <input class="form-input" id="notifImageUrl" placeholder="https://example.com/banner.jpg" oninput="setAnnouncementPreview(this.value.trim())" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Or Upload Image (optional)</label>
+              <input class="form-input" id="notifImageFile" type="file" accept="image/*" onchange="handleAnnouncementImageUpload(event)" />
+            </div>
+            <div class="form-group full" id="notifPreviewWrap" style="display:none">
+              <label class="form-label">Preview</label>
+              <img id="notifPreviewImage" alt="Announcement preview" style="max-width:100%; width:280px; border-radius:14px; border:1px solid var(--border); background:#fafaf8" />
+            </div>
+            <div class="form-group full">
+              <button class="action-btn primary" onclick="sendBroadcast()">📣 Send Announcement</button>
             </div>
           </div>
         </div>
@@ -608,7 +620,7 @@
 
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title">📋 Notification History</div>
+          <div class="panel-title">📋 Announcement History</div>
         </div>
         <div id="notifHistory"><div class="loading">Loading…</div></div>
       </div>
@@ -752,7 +764,7 @@
     if (name === 'customers') loadCustomers();
     if (name === 'settings') loadSettings();
     if (name === 'flashdeals') loadFlashDeals();
-    if (name === 'notifications') loadNotifHistory();
+    if (name === 'announcements') loadNotifHistory();
   }
 
   function refreshCurrent() { showSection(currentSection); }
@@ -762,6 +774,35 @@
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function setAnnouncementPreview(src) {
+    const wrap = document.getElementById('notifPreviewWrap');
+    const img = document.getElementById('notifPreviewImage');
+    if (!wrap || !img) return;
+
+    if (!src) {
+      wrap.style.display = 'none';
+      img.removeAttribute('src');
+      return;
+    }
+
+    img.src = src;
+    wrap.style.display = 'block';
+  }
+
+  function handleAnnouncementImageUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      document.getElementById('notifImageUrl').value = result;
+      setAnnouncementPreview(result);
+      showToast('Image added to announcement');
+    };
+    reader.readAsDataURL(file);
   }
 
   async function ensureBrowserNotificationPermission() {
@@ -1542,10 +1583,11 @@ async function editCategory(id, name, icon, imageUrl) {
     }
   }
 
-  // NOTIFICATIONS
+  // ANNOUNCEMENTS
   async function sendBroadcast() {
     const title = document.getElementById('notifTitle').value.trim();
     const body = document.getElementById('notifBody').value.trim();
+    const image_url = document.getElementById('notifImageUrl').value.trim();
 
     if (!title || !body) { showToast('Title and message are required'); return; }
 
@@ -1554,7 +1596,7 @@ async function editCategory(id, name, icon, imageUrl) {
     const res = await fetch(`${API}/api/admin/notifications/broadcast`, {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ title, body })
+      body: JSON.stringify({ title, body, image_url: image_url || null })
     });
 
     if (res.ok) {
@@ -1562,6 +1604,9 @@ async function editCategory(id, name, icon, imageUrl) {
       showToast(`✅ Sent to ${data.sent} customers!`);
       document.getElementById('notifTitle').value = '';
       document.getElementById('notifBody').value = '';
+      document.getElementById('notifImageUrl').value = '';
+      document.getElementById('notifImageFile').value = '';
+      setAnnouncementPreview('');
       loadNotifHistory();
     } else {
       showToast('Error sending notification');
@@ -1573,14 +1618,15 @@ async function editCategory(id, name, icon, imageUrl) {
     const data = await res.json();
 
     document.getElementById('notifHistory').innerHTML = data.length === 0
-      ? '<div class="loading">No notifications sent yet.</div>'
+      ? '<div class="loading">No announcements sent yet.</div>'
       : `<table>
           <thead><tr>
-            <th>Title</th><th>Message</th><th>Sent To</th><th>Date</th>
+            <th>Creative</th><th>Title</th><th>Message</th><th>Sent To</th><th>Date</th>
           </tr></thead>
           <tbody>
             ${data.map(n => `
               <tr>
+                <td>${n.image_url ? `<img src="${n.image_url}" alt="Announcement" style="width:56px;height:56px;object-fit:cover;border-radius:12px;border:1px solid var(--border)" />` : '<span style="color:var(--muted)">No image</span>'}</td>
                 <td><strong>${n.title}</strong></td>
                 <td style="max-width:300px">${n.body}</td>
                 <td>${n.sent_count} customers</td>
