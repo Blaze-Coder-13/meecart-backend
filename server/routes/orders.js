@@ -171,13 +171,15 @@ router.post('/', authMiddleware, async (req, res) => {
       `New order of ₹${total} received from ${req.user.phone}`
     );
 
-    await sendAdminOrderEmail({
+    sendAdminOrderEmail({
       settings,
       total,
       orderId,
       customerPhone: req.user.phone,
       address: address.trim(),
       itemCount: validatedItems.length,
+    }).catch(err => {
+      console.error('Admin order email failed:', err);
     });
 
     res.status(201).json({ message: 'Order placed successfully', order });
