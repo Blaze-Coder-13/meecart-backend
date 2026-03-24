@@ -706,6 +706,9 @@
   const API = '';
   const token = localStorage.getItem('meecart_token');
   const user = JSON.parse(localStorage.getItem('meecart_user') || 'null');
+  const ADMIN_LAST_SEEN_ORDER_KEY = 'meecart_admin_last_seen_order_id';
+  let adminOrderPollHandle = null;
+  let notificationPermissionAsked = false;
 
   if (!token || !user || user.role !== 'admin') {
     window.location.href = '/login.html';
@@ -752,6 +755,61 @@
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  async function ensureBrowserNotificationPermission() {
+    if (!('Notification' in window) || notificationPermissionAsked) return;
+    notificationPermissionAsked = true;
+    if (Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch {}
+    }
+  }
+
+  function showAdminOrderNotification(order) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const customer = order.customer_name || order.phone || 'Customer';
+    const notification = new Notification('New Meecart Order', {
+      body: `Order #${order.id} from ${customer} for ₹${order.total}`,
+      tag: `order-${order.id}`,
+    });
+    notification.onclick = () => {
+      window.focus();
+      showSection('orders');
+      notification.close();
+    };
+  }
+
+  async function pollForNewOrders() {
+    try {
+      const res = await fetch(`${API}/api/admin/dashboard`, { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const latestOrder = data.recent_orders?.[0];
+      if (!latestOrder?.id) return;
+
+      const previousSeen = localStorage.getItem(ADMIN_LAST_SEEN_ORDER_KEY);
+      if (!previousSeen) {
+        localStorage.setItem(ADMIN_LAST_SEEN_ORDER_KEY, String(latestOrder.id));
+        return;
+      }
+
+      if (Number(latestOrder.id) > Number(previousSeen)) {
+        localStorage.setItem(ADMIN_LAST_SEEN_ORDER_KEY, String(latestOrder.id));
+        showToast(`New order #${latestOrder.id} received`);
+        showAdminOrderNotification(latestOrder);
+        if (currentSection === 'dashboard') {
+          loadDashboard();
+        }
+      }
+    } catch {}
+  }
+
+  function startAdminOrderPolling() {
+    if (adminOrderPollHandle) clearInterval(adminOrderPollHandle);
+    pollForNewOrders();
+    adminOrderPollHandle = setInterval(pollForNewOrders, 30000);
   }
 
   // DASHBOARD
@@ -1584,8 +1642,10 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   // Init
+  ensureBrowserNotificationPermission();
   loadDashboard();
   loadSettings(); // Load branding on startup
+  startAdminOrderPolling();
 </script>
 </body>
 </html>
