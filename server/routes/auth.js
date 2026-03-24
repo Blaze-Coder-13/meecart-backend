@@ -74,7 +74,7 @@ router.post('/send-otp', async (req, res) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await query('UPDATE otp_codes SET used = 1 WHERE phone = $1 AND used = 0 AND purpose = $2', [phone, purpose]);
     await query('INSERT INTO otp_codes (phone, code, purpose, expires_at) VALUES ($1, $2, $3, $4)', [phone, code, purpose, expiresAt]);
-    sendSMS(phone, code, purpose);
+    await sendSMS(phone, code, purpose);
     res.json({ message: 'OTP sent successfully', phone });
   } catch (err) {
     console.error(err);
@@ -268,6 +268,22 @@ router.post('/push-token', async (req, res) => {
       ON CONFLICT (user_id, token) DO NOTHING
     `, [userId, token]);
     res.json({ message: 'Push token saved' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/auth/notifications
+router.get('/notifications', authMiddleware, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, title, body, created_at
+      FROM notification_logs
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
