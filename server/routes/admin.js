@@ -397,4 +397,69 @@ router.get('/flash-deals/public', async (req, res) => {
   }
 });
 
+// ── NOTIFICATIONS ─────────────────────────────────────
+
+router.get('/notifications', adminMiddleware, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM notification_logs ORDER BY created_at DESC LIMIT 50');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/notifications/broadcast', adminMiddleware, async (req, res) => {
+  const { title, body } = req.body;
+  if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
+
+  try {
+    // Get all customer push tokens
+    const tokensResult = await query(`
+      SELECT DISTINCT pt.token FROM push_tokens pt
+      JOIN users u ON pt.user_id = u.id
+      WHERE u.role = 'customer'
+    `);
+
+    const tokens = tokensResult.rows.map(r => r.token);
+    let sent = 0;
+
+    if (tokens.length > 0) {
+      // Send in batches of 100
+      const batches = [];
+      for (let i = 0; i < tokens.length; i += 100) {
+        batches.push(tokens.slice(i, i + 100));
+      }
+
+      for (const batch of batches) {
+        const messages = batch.map(token => ({
+          to: token,
+          sound: 'default',
+          title,
+          body,
+          data: { type: 'broadcast' },
+        }));
+
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messages),
+        });
+
+        sent += batch.length;
+      }
+    }
+
+    // Log the notification
+    await query(
+      'INSERT INTO notification_logs (title, body, sent_count) VALUES ($1, $2, $3)',
+      [title, body, sent]
+    );
+
+    res.json({ message: 'Notification sent', sent });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
