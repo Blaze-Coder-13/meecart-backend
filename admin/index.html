@@ -38,6 +38,8 @@
       position: fixed;
       top: 0; left: 0; bottom: 0;
     }
+    .sidebar-backdrop { display: none; }
+    .mobile-menu-btn { display: none; }
 
     .sidebar-logo {
       padding: 24px 20px;
@@ -288,9 +290,150 @@
     }
     .toast.show { transform: none; }
 
-    @media (max-width: 768px) {
-      .sidebar { display: none; }
-      .main { margin-left: 0; }
+    [id$='Table'], #recentOrders, #notifHistory {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        display: block;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .sidebar {
+        z-index: 1001;
+        transform: translateX(-100%);
+        transition: transform 0.22s ease;
+      }
+
+      .sidebar.mobile-open {
+        transform: translateX(0);
+      }
+
+      .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.32);
+        z-index: 1000;
+      }
+
+      .sidebar-backdrop.show {
+        display: block;
+      }
+
+      .main {
+        margin-left: 0;
+      }
+
+      .mobile-menu-btn {
+        display: inline-flex;
+        width: 40px;
+        height: 40px;
+        align-items: center;
+        justify-content: center;
+        border: 1.5px solid var(--border);
+        background: white;
+        border-radius: 10px;
+        font-size: 20px;
+        color: var(--text);
+      }
+
+      .topbar {
+        padding: 14px 16px;
+        flex-wrap: nowrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .topbar-actions {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+
+      .topbar-brand {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .topbar-brand h1 {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .content {
+        padding: 16px;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .panel-header {
+        padding: 16px;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      th, td {
+        padding: 12px 14px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .filter-row {
+        flex-wrap: wrap;
+      }
+
+      .action-btn,
+      .refresh-btn,
+      .filter-select,
+      .status-select {
+        min-height: 42px;
+      }
+
+      .toast {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar h1 {
+        font-size: 20px;
+      }
+
+      .topbar {
+        flex-wrap: wrap;
+      }
+
+      .topbar-actions {
+        gap: 8px;
+      }
+
+      .content {
+        padding: 14px;
+      }
+
+      .panel-title {
+        font-size: 15px;
+      }
+
+      th, td {
+        font-size: 12px;
+      }
     }
   </style>
 </head>
@@ -338,15 +481,16 @@
     <button class="logout-btn" onclick="logout()">🚪 Logout</button>
   </div>
 </aside>
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileMenu()"></div>
 
 <!-- Main -->
 <div class="main">
   <div class="topbar">
-    <div style="display:flex;align-items:center;gap:12px">
+    <div class="topbar-brand" style="display:flex;align-items:center;gap:12px">
+      <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
       <img id="topbarLogo" src="" style="width:40px;height:40px;border-radius:8px;object-fit:contain;display:none" />
       <h1 id="pageTitle">Dashboard</h1>
     </div>
-    <h1 id="pageTitle">Dashboard</h1>
     <div class="topbar-actions">
       <button class="refresh-btn install-btn" id="installAdminBtn" onclick="installAdminApp()">📲 Install App</button>
       <button class="refresh-btn" id="enableNotifBtn" onclick="enableAdminNotifications()">🔔 Enable Notifications</button>
@@ -770,6 +914,21 @@
     showToast('Admin app installed');
   });
 
+  function toggleMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (!sidebar || !backdrop || window.innerWidth > 900) return;
+    sidebar.classList.toggle('mobile-open');
+    backdrop.classList.toggle('show');
+  }
+
+  function closeMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sidebar) sidebar.classList.remove('mobile-open');
+    if (backdrop) backdrop.classList.remove('show');
+  }
+
   function headers() {
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   }
@@ -789,6 +948,7 @@
     });
     document.getElementById('pageTitle').textContent = name.charAt(0).toUpperCase() + name.slice(1);
     currentSection = name;
+    closeMobileMenu();
 
     if (name === 'dashboard') loadDashboard();
     if (name === 'orders') loadOrders();
