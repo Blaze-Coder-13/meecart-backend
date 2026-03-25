@@ -139,12 +139,11 @@ router.post('/send-otp', async (req, res) => {
     await query('INSERT INTO otp_codes (phone, code, purpose, expires_at) VALUES ($1, $2, $3, $4)', [phone, code, purpose, expiresAt]);
     const smsResult = await sendOTPViaFast2SMS(phone, code, purpose);
     if (!smsResult?.ok) {
-      await query(
-        'UPDATE otp_codes SET used = 1 WHERE phone = $1 AND code = $2 AND purpose = $3 AND used = 0',
-        [phone, code, purpose]
-      );
-      return res.status(502).json({
-        error: 'Failed to send OTP SMS',
+      console.log(`OTP fallback active for ${phone} [${purpose}] because SMS failed: ${smsResult?.error || 'Unknown SMS error'}`);
+      return res.json({
+        message: 'OTP generated successfully',
+        phone,
+        fallback: true,
         details: smsResult?.error || 'Fast2SMS rejected the request',
       });
     }
