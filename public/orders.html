@@ -314,7 +314,7 @@
       <div class="order-item-row">
         <span class="order-item-emoji">${item.image_emoji}</span>
         <span class="order-item-name">${item.name}</span>
-        <span class="order-item-qty">×${item.quantity} ${item.unit}</span>
+        <span class="order-item-qty">${item.quantity} x ${item.unit}</span>
         <span class="order-item-price">₹${(item.price * item.quantity).toFixed(0)}</span>
       </div>`).join('');
   }
