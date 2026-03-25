@@ -12,36 +12,46 @@ function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '').trim();
+}
+
+function normalizePurpose(value) {
+  return String(value || 'signup').trim().toLowerCase();
+}
+
 async function sendSMS(phone, code, purpose) {
   console.log(`\n📱 OTP for ${phone} [${purpose}]: ${code}\n`);
 
   const apiKey = process.env.FAST2SMS_API_KEY;
   if (!apiKey) {
     console.log('⚠️ FAST2SMS_API_KEY not set — OTP only in logs');
-    return;
+    return { ok: true, skipped: true };
   }
-
-  const message = purpose === 'forgot'
-    ? `Your Meecart password reset OTP is ${code}. Valid for 5 minutes. Do not share with anyone.`
-    : `Welcome to Meecart! Your verification OTP is ${code}. Valid for 5 minutes.`;
 
   try {
     const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
       method: 'POST',
       headers: {
-        'authorization': apiKey,
-        'Content-Type': 'application/json',
+        authorization: apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        route: 'q',
-        message: message,
-        language: 'english',
-        flash: 0,
+      body: new URLSearchParams({
+        variables_values: code,
+        route: 'otp',
         numbers: phone,
-      }),
+        flash: '0',
+      }).toString(),
     });
-    const data = await res.json();
-    if (data.return) {
+    const raw = await res.text();
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { raw };
+    }
+    if (!res.ok || !data?.return) {
       console.log(`✅ SMS sent to ${phone}`);
     } else {
       console.log(`❌ SMS failed: ${JSON.stringify(data)}`);
@@ -51,9 +61,62 @@ async function sendSMS(phone, code, purpose) {
   }
 }
 
+async function sendOTPViaFast2SMS(phone, code, purpose) {
+  console.log(`\nOTP for ${phone} [${purpose}]: ${code}\n`);
+
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey) {
+    console.log('FAST2SMS_API_KEY not set - OTP only in logs');
+    return { ok: true, skipped: true };
+  }
+
+  try {
+    const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: {
+        authorization: apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        variables_values: code,
+        route: 'otp',
+        numbers: phone,
+        flash: '0',
+      }).toString(),
+    });
+
+    const raw = await res.text();
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { raw };
+    }
+
+    if (!res.ok || !data?.return) {
+      const fast2smsError =
+        data?.message?.join?.(', ') ||
+        data?.message ||
+        data?.error ||
+        data?.raw ||
+        'Unknown Fast2SMS error';
+      console.log(`Fast2SMS failed for ${phone}: ${fast2smsError}`);
+      return { ok: false, error: fast2smsError, status: res.status };
+    }
+
+    console.log(`SMS sent to ${phone}`);
+    return { ok: true, data };
+  } catch (err) {
+    console.error('SMS error:', err);
+    return { ok: false, error: err.message || 'SMS request failed' };
+  }
+}
+
 // POST /api/auth/send-otp
 router.post('/send-otp', async (req, res) => {
-  const { phone, purpose = 'signup' } = req.body;
+  const phone = normalizePhone(req.body.phone);
+  const purpose = normalizePurpose(req.body.purpose);
   if (!phone || !/^\d{10}$/.test(phone)) {
     return res.status(400).json({ error: 'Valid 10-digit phone number required' });
   }
@@ -74,7 +137,17 @@ router.post('/send-otp', async (req, res) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await query('UPDATE otp_codes SET used = 1 WHERE phone = $1 AND used = 0 AND purpose = $2', [phone, purpose]);
     await query('INSERT INTO otp_codes (phone, code, purpose, expires_at) VALUES ($1, $2, $3, $4)', [phone, code, purpose, expiresAt]);
-    await sendSMS(phone, code, purpose);
+    const smsResult = await sendOTPViaFast2SMS(phone, code, purpose);
+    if (!smsResult?.ok) {
+      await query(
+        'UPDATE otp_codes SET used = 1 WHERE phone = $1 AND code = $2 AND purpose = $3 AND used = 0',
+        [phone, code, purpose]
+      );
+      return res.status(502).json({
+        error: 'Failed to send OTP SMS',
+        details: smsResult?.error || 'Fast2SMS rejected the request',
+      });
+    }
     res.json({ message: 'OTP sent successfully', phone });
   } catch (err) {
     console.error(err);
@@ -84,20 +157,45 @@ router.post('/send-otp', async (req, res) => {
 
 // POST /api/auth/verify-otp
 router.post('/verify-otp', async (req, res) => {
-  const { phone, code, purpose = 'signup' } = req.body;
-  if (!phone || !code) {
+  const phone = normalizePhone(req.body.phone);
+  const submittedCode = String(req.body.code || req.body.otp || '').trim();
+  const purpose = normalizePurpose(req.body.purpose);
+
+  if (!phone || !submittedCode) {
     return res.status(400).json({ error: 'Phone and OTP required' });
   }
   try {
-    const result = await query(`
+    const latest = await query(`
       SELECT * FROM otp_codes
-      WHERE phone = $1 AND code = $2 AND purpose = $3 AND used = 0 AND expires_at > NOW()
+      WHERE phone = $1 AND purpose = $2
       ORDER BY created_at DESC LIMIT 1
-    `, [phone, code, purpose]);
-    if (result.rows.length === 0) {
+    `, [phone, purpose]);
+
+    if (latest.rows.length === 0) {
+      console.log(`OTP verify failed: no OTP found for ${phone} [${purpose}]`);
       return res.status(401).json({ error: 'Invalid or expired OTP' });
     }
-    await query('UPDATE otp_codes SET used = 1 WHERE id = $1', [result.rows[0].id]);
+
+    const otpRow = latest.rows[0];
+    const expiresAt = new Date(otpRow.expires_at);
+    const now = new Date();
+
+    if (otpRow.used) {
+      console.log(`OTP verify failed: OTP already used for ${phone} [${purpose}] code=${otpRow.code}`);
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= now) {
+      console.log(`OTP verify failed: OTP expired for ${phone} [${purpose}] code=${otpRow.code} expires_at=${otpRow.expires_at}`);
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if (String(otpRow.code).trim() !== submittedCode) {
+      console.log(`OTP verify failed: code mismatch for ${phone} [${purpose}] expected=${otpRow.code} received=${submittedCode}`);
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    await query('UPDATE otp_codes SET used = 1 WHERE id = $1', [otpRow.id]);
     res.json({ message: 'OTP verified', phone, verified: true });
   } catch (err) {
     console.error(err);
