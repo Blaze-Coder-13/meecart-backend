@@ -279,6 +279,58 @@
 
     .loading { padding: 40px; text-align: center; color: var(--muted); }
 
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .pagination-info {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .page-btn {
+      min-width: 38px;
+      height: 38px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: white;
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .page-btn.active {
+      background: var(--green);
+      border-color: var(--green);
+      color: white;
+    }
+
+    .page-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
     .toast {
       position: fixed; bottom: 24px; right: 24px;
       background: #1a1a1a; color: white;
@@ -520,7 +572,7 @@
         <div class="panel-header">
           <div class="panel-title">All Orders</div>
           <div class="filter-row">
-            <select class="filter-select" id="orderStatusFilter" onchange="loadOrders()">
+            <select class="filter-select" id="orderStatusFilter" onchange="resetOrderPagination()">
               <option value="">All Statuses</option>
               <option value="pending">Pending</option>
               <option value="confirmed">Confirmed</option>
@@ -886,6 +938,8 @@
   let adminOrderPollHandle = null;
   let notificationPermissionAsked = false;
   let deferredInstallPrompt = null;
+  let currentOrdersPage = 1;
+  const ordersPerPage = 20;
 
   if (!token || !user || user.role !== 'admin') {
     window.location.href = '/login.html';
@@ -1155,11 +1209,65 @@
   }
 
   // ORDERS
+  function resetOrderPagination() {
+    currentOrdersPage = 1;
+    loadOrders();
+  }
+
+  function getOrderPageNumbers(totalPages, currentPage) {
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    return Array.from(pages)
+      .filter(page => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+  }
+
+  function renderOrdersPagination(totalOrders, totalPages) {
+    if (totalPages <= 1) return '';
+
+    const pageButtons = getOrderPageNumbers(totalPages, currentOrdersPage).map(page => `
+      <button
+        class="page-btn ${page === currentOrdersPage ? 'active' : ''}"
+        onclick="setOrdersPage(${page})"
+      >${page}</button>
+    `).join('');
+
+    const startOrder = ((currentOrdersPage - 1) * ordersPerPage) + 1;
+    const endOrder = Math.min(currentOrdersPage * ordersPerPage, totalOrders);
+
+    return `
+      <div class="pagination">
+        <div class="pagination-info">
+          Showing ${startOrder}-${endOrder} of ${totalOrders} orders
+        </div>
+        <div class="pagination-controls">
+          <button class="page-btn" onclick="setOrdersPage(${currentOrdersPage - 1})" ${currentOrdersPage === 1 ? 'disabled' : ''}>Prev</button>
+          ${pageButtons}
+          <button class="page-btn" onclick="setOrdersPage(${currentOrdersPage + 1})" ${currentOrdersPage === totalPages ? 'disabled' : ''}>Next</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function setOrdersPage(page) {
+    if (page < 1 || page === currentOrdersPage) return;
+    currentOrdersPage = page;
+    loadOrders();
+  }
+
   async function loadOrders() {
     const status = document.getElementById('orderStatusFilter')?.value || '';
-    const url = `${API}/api/orders?${status ? `status=${status}` : ''}`;
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    params.set('page', currentOrdersPage);
+    const url = `${API}/api/orders?${params.toString()}`;
     const res = await fetch(url, { headers: headers() });
     const data = await res.json();
+    const totalPages = Math.max(1, Math.ceil((Number(data.total) || 0) / ordersPerPage));
+
+    if (currentOrdersPage > totalPages) {
+      currentOrdersPage = totalPages;
+      return loadOrders();
+    }
 
     if (!data.orders?.length) {
       document.getElementById('ordersTable').innerHTML = '<div class="loading">No orders found.</div>';
@@ -1193,7 +1301,8 @@
               <td><button class="action-btn" onclick="viewOrder(${o.id})">View</button></td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>
+      ${renderOrdersPagination(Number(data.total) || data.orders.length, totalPages)}`;
   }
 
   async function updateStatus(orderId, status) {
