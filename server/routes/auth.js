@@ -179,11 +179,6 @@ router.post('/verify-otp', async (req, res) => {
     const expiresAt = new Date(otpRow.expires_at);
     const now = new Date();
 
-    if (otpRow.used) {
-      console.log(`OTP verify failed: OTP already used for ${phone} [${purpose}] code=${otpRow.code}`);
-      return res.status(401).json({ error: 'Invalid or expired OTP' });
-    }
-
     if (Number.isNaN(expiresAt.getTime()) || expiresAt <= now) {
       console.log(`OTP verify failed: OTP expired for ${phone} [${purpose}] code=${otpRow.code} expires_at=${otpRow.expires_at}`);
       return res.status(401).json({ error: 'Invalid or expired OTP' });
@@ -192,6 +187,11 @@ router.post('/verify-otp', async (req, res) => {
     if (String(otpRow.code).trim() !== submittedCode) {
       console.log(`OTP verify failed: code mismatch for ${phone} [${purpose}] expected=${otpRow.code} received=${submittedCode}`);
       return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if (otpRow.used) {
+      console.log(`OTP verify retry accepted for ${phone} [${purpose}] code=${otpRow.code}`);
+      return res.json({ message: 'OTP already verified', phone, verified: true, reused: true });
     }
 
     await query('UPDATE otp_codes SET used = 1 WHERE id = $1', [otpRow.id]);
