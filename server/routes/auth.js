@@ -105,9 +105,40 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
+router.get('/referral-code/:code', async (req, res) => {
+  const code = req.params.code?.trim()?.toUpperCase();
+  if (!code) {
+    return res.status(400).json({ error: 'Referral code is required' });
+  }
+
+  try {
+    const result = await query(
+      'SELECT id, name, phone FROM users WHERE referral_code = $1 AND role = $2',
+      [code, 'customer']
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Referral code not found' });
+    }
+
+    const referrer = result.rows[0];
+    res.json({
+      valid: true,
+      referred_by_name: referrer.name || null,
+      message: referrer.name
+        ? `You will get your first-order referral discount from ${referrer.name}.`
+        : 'You will get your first-order referral discount.',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
-  const { phone, name, address, password, referral_code } = req.body;
+  const { phone, name, address, password } = req.body;
+  const referral_code = req.body.referral_code?.trim()?.toUpperCase();
   if (!phone || !name || !address || !password) {
     return res.status(400).json({ error: 'Phone, name, address and password are required' });
   }
@@ -311,12 +342,27 @@ router.get('/referral-stats', authMiddleware, async (req, res) => {
     );
     const referredCount = parseInt(referredResult.rows[0].c);
 
+    const referredDiscountOrderResult = await query(
+      `SELECT id, status, created_at, updated_at
+       FROM orders
+       WHERE user_id = $1 AND referral_discount_applied = 1
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [userId]
+    );
+    const referredDiscountOrder = referredDiscountOrderResult.rows[0] || null;
+    const referredDiscountClaimed = Boolean(currentUser.referred_by && referredDiscountOrder);
+
     const bonusCode = `REF${userId}BONUS`;
     const bonusResult = await query(
-      'SELECT * FROM promo_codes WHERE code = $1 AND active = 1 AND used_count < max_uses',
+      'SELECT * FROM promo_codes WHERE code = $1',
       [bonusCode]
     );
-    const hasBonus = bonusResult.rows.length > 0;
+    const bonus = bonusResult.rows[0] || null;
+    const earnedRewards = Number(bonus?.max_uses || 0);
+    const usedRewards = Number(bonus?.used_count || 0);
+    const availableRewards = bonus && bonus.active ? Math.max(earnedRewards - usedRewards, 0) : 0;
+    const pendingReferralRewards = Math.max(referredCount - earnedRewards, 0);
 
     let referredByInfo = null;
     if (currentUser.referred_by) {
@@ -333,9 +379,21 @@ router.get('/referral-stats', authMiddleware, async (req, res) => {
       referral_code: currentUser.referral_code,
       referred_count: referredCount,
       discount_per_referral: discountPerReferral,
-      total_earned: referredCount * discountPerReferral,
-      bonus_code: hasBonus ? bonusCode : null,
-      bonus_amount: hasBonus ? discountPerReferral : null,
+      total_earned: earnedRewards * discountPerReferral,
+      bonus_code: availableRewards > 0 ? bonusCode : null,
+      bonus_amount: availableRewards > 0 ? discountPerReferral : null,
+      earned_referral_rewards: earnedRewards,
+      used_referral_rewards: usedRewards,
+      available_referral_rewards: availableRewards,
+      pending_referral_rewards: pendingReferralRewards,
+      referrer_reward_claimed: usedRewards > 0,
+      referred_discount_claimed: referredDiscountClaimed,
+      referred_discount_status: currentUser.referred_by
+        ? (referredDiscountClaimed ? 'claimed' : 'pending')
+        : null,
+      referred_discount_claimed_at: referredDiscountClaimed
+        ? (referredDiscountOrder.updated_at || referredDiscountOrder.created_at)
+        : null,
       referred_by: currentUser.referred_by || null,
       referred_by_name: referredByInfo?.name || null,
       referred_by_phone: referredByInfo?.phone || null,

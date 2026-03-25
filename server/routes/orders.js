@@ -22,9 +22,89 @@ async function logOrderStatus(orderId, status) {
   );
 }
 
+async function getActiveFlashDeal(productId) {
+  const result = await query(`
+    SELECT *
+    FROM flash_deals
+    WHERE product_id = $1 AND active = 1 AND expires_at > NOW()
+    ORDER BY expires_at ASC
+    LIMIT 1
+  `, [productId]);
+
+  return result.rows[0] || null;
+}
+
+async function grantReferrerReward(orderId) {
+  const orderResult = await query(`
+    SELECT o.id, o.user_id, o.status, o.referral_reward_granted, u.referred_by, u.phone
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    WHERE o.id = $1
+  `, [orderId]);
+
+  const order = orderResult.rows[0];
+  if (!order || order.status !== 'delivered' || order.referral_reward_granted || !order.referred_by) return;
+
+  const existingRewardResult = await query(`
+    SELECT id
+    FROM orders
+    WHERE user_id = $1
+      AND referral_reward_granted = 1
+    LIMIT 1
+  `, [order.user_id]);
+
+  if (existingRewardResult.rows.length > 0) {
+    await query(
+      'UPDATE orders SET referral_reward_granted = 1 WHERE id = $1',
+      [orderId]
+    );
+    return;
+  }
+
+  const settingResult = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
+  const referralDiscount = Number(settingResult.rows[0]?.value || 30);
+  const referrerResult = await query(
+    'SELECT id, phone FROM users WHERE referral_code = $1',
+    [order.referred_by]
+  );
+
+  if (referrerResult.rows.length === 0) return;
+
+  const referrer = referrerResult.rows[0];
+  const bonusCode = `REF${referrer.id}BONUS`;
+
+  await query(`
+    INSERT INTO promo_codes (code, discount_type, discount_value, min_order_value, max_uses, active)
+    VALUES ($1, 'flat', $2, 0, 1, 1)
+    ON CONFLICT (code) DO UPDATE
+    SET discount_value = EXCLUDED.discount_value,
+        max_uses = promo_codes.max_uses + 1,
+        active = 1
+  `, [bonusCode, referralDiscount]);
+
+  await query(
+    'UPDATE orders SET referral_reward_granted = 1 WHERE id = $1',
+    [orderId]
+  );
+
+  sendPushToUser(
+    referrer.id,
+    'Referral Bonus Unlocked',
+    `Your referral bonus code ${bonusCode} is ready for your next order.`
+  );
+}
+
 // POST /api/orders
 router.post('/', authMiddleware, async (req, res) => {
-  const { items, address, notes, promo_code } = req.body;
+  const {
+    items,
+    address,
+    notes,
+    promo_code,
+    apply_referral_discount,
+    discount: rawFrontendDiscount = 0,
+    final_total: rawFrontendTotal = 0,
+  } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Order must have at least one item' });
@@ -35,14 +115,12 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 
   try {
-    // Get settings
     const settingsResult = await query('SELECT key, value FROM settings');
     const settings = {};
     settingsResult.rows.forEach(s => settings[s.key] = s.value);
     const FREE_DELIVERY_ABOVE = Number(settings.free_delivery_above || 150);
     const DELIVERY_CHARGE = Number(settings.delivery_charges || 30);
 
-    // Validate products
     let subtotal = 0;
     const validatedItems = [];
 
@@ -58,37 +136,53 @@ router.post('/', authMiddleware, async (req, res) => {
       if (!item.quantity || item.quantity <= 0) {
         return res.status(400).json({ error: `Invalid quantity for ${product.name}` });
       }
-      subtotal += product.price * item.quantity;
-      validatedItems.push({ product, quantity: item.quantity, price: product.price });
+
+      let finalPrice = product.price;
+      let unitSnapshot = product.unit;
+      let isFlashDeal = Boolean(item.is_flash_deal);
+
+      if (isFlashDeal) {
+        const flashDeal = await getActiveFlashDeal(product.id);
+        if (!flashDeal) {
+          return res.status(400).json({ error: `${product.name} flash deal is no longer available.` });
+        }
+        if (Number(item.quantity) > Number(flashDeal.max_per_order || 1)) {
+          return res.status(400).json({ error: `${product.name} flash deal limit exceeded.` });
+        }
+
+        finalPrice = Number(flashDeal.deal_price);
+        unitSnapshot = flashDeal.deal_unit || item.unit || product.unit;
+      } else {
+        unitSnapshot = item.unit || product.unit;
+      }
+
+      subtotal += finalPrice * item.quantity;
+      validatedItems.push({
+        product,
+        quantity: item.quantity,
+        price: finalPrice,
+        unit_snapshot: unitSnapshot,
+        is_flash_deal: isFlashDeal,
+      });
     }
 
-    // Apply referral discount on first order
+    // Keep referred-user discount available until it is actually claimed once.
     let referralDiscount = 0;
+    let referralDiscountApplied = 0;
     const userResult = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const currentUser = userResult.rows[0];
-    const orderCount = await query('SELECT COUNT(*) as c FROM orders WHERE user_id = $1', [req.user.id]);
-      console.log(`📦 Order by user ${req.user.id} (${currentUser.phone}), referred_by: "${currentUser.referred_by}", order count: ${orderCount.rows[0].c}, referral discount: ${referralDiscount}`);
+    const referralDiscountClaimResult = await query(
+      'SELECT COUNT(*) as c FROM orders WHERE user_id = $1 AND referral_discount_applied = 1',
+      [req.user.id]
+    );
+    const referralDiscountClaimed = parseInt(referralDiscountClaimResult.rows[0].c) > 0;
 
-
-    if (parseInt(orderCount.rows[0].c) === 0 && currentUser.referred_by) {
+    if (apply_referral_discount && !referralDiscountClaimed && currentUser.referred_by) {
       const referralDiscountSetting = await query("SELECT value FROM settings WHERE key = 'referral_discount'");
       referralDiscount = Number(referralDiscountSetting.rows[0]?.value || 30);
-
-      // Give referrer a promo code for their next order
-      const referrer = await query('SELECT id, phone FROM users WHERE referral_code = $1', [currentUser.referred_by]);
-      if (referrer.rows.length > 0) {
-        const referrerCode = `REF${referrer.rows[0].id}BONUS`;
-        await query(`
-          INSERT INTO promo_codes (code, discount_type, discount_value, min_order_value, max_uses, active)
-          VALUES ($1, 'flat', $2, 0, 1, 1)
-          ON CONFLICT (code) DO UPDATE SET used_count = 0, active = 1
-        `, [referrerCode, referralDiscount]);
-
-        console.log(`🎁 Referral bonus! User ${currentUser.phone} used ${currentUser.referred_by}. Referrer ${referrer.rows[0].phone} gets code ${referrerCode}`);
-      }
+      referralDiscountApplied = 1;
     }
 
-    // Apply promo code
     let discount = referralDiscount;
     if (promo_code) {
       const promoResult = await query(`
@@ -112,31 +206,49 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const deliveryCharges = subtotal >= FREE_DELIVERY_ABOVE ? 0 : DELIVERY_CHARGE;
-    const total = subtotal + deliveryCharges - discount;
+    const frontendDiscount = Number(rawFrontendDiscount) || 0;
+    const frontendTotal = Number(rawFrontendTotal) || 0;
+    const grossTotal = subtotal + deliveryCharges;
+    const serverDiscount = Math.min(Number(discount) || 0, grossTotal);
+    const serverTotal = Math.max(0, grossTotal - serverDiscount);
+    
+    // Keep the stored order aligned with the checkout amount the customer
+    // confirmed, as long as the arithmetic matches the validated cart totals.
+    let finalDiscount = serverDiscount;
+    let finalTotal = serverTotal;
+    
+    if (frontendDiscount > 0) {
+      const normalizedFrontendDiscount = Math.min(frontendDiscount, grossTotal);
+      const expectedFrontendTotal = grossTotal - normalizedFrontendDiscount;
+      // Allow small floating-point differences (±2 rupees)
+      if (Math.abs(expectedFrontendTotal - frontendTotal) <= 2) {
+        finalDiscount = normalizedFrontendDiscount;
+        finalTotal = Math.max(0, expectedFrontendTotal);
+      }
+      // If validation fails, stick with server-side calculation (above)
+    }
 
-    // Create order
     const orderResult = await query(`
-      INSERT INTO orders (user_id, subtotal, delivery_charges, discount, total, address, notes, payment_method, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'cod', 'pending') RETURNING *
-    `, [req.user.id, subtotal, deliveryCharges, discount, total, address.trim(), notes || null]);
+      INSERT INTO orders (user_id, subtotal, delivery_charges, discount, total, address, notes, payment_method, status, referral_discount_applied)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'cod', 'pending', $8) RETURNING *
+    `, [req.user.id, subtotal, deliveryCharges, finalDiscount, finalTotal, address.trim(), notes || null, referralDiscountApplied]);
 
     const orderId = orderResult.rows[0].id;
 
     for (const item of validatedItems) {
       await query(`
-        INSERT INTO order_items (order_id, product_id, quantity, price)
-        VALUES ($1, $2, $3, $4)
-      `, [orderId, item.product.id, item.quantity, item.price]);
+        INSERT INTO order_items (order_id, product_id, quantity, price, unit_snapshot, is_flash_deal)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [orderId, item.product.id, item.quantity, item.price, item.unit_snapshot, item.is_flash_deal ? 1 : 0]);
     }
 
     await logOrderStatus(orderId, 'pending');
 
     const order = await getOrderWithItems(orderId);
 
-    // Notify admin of new order
     sendPushToAdmins(
-      '🛒 New Order!',
-      `New order of ₹${total} received from ${req.user.phone}`
+      'New Order!',
+      `New order of Rs.${finalTotal} received from ${req.user.phone}`
     );
 
     res.status(201).json({ message: 'Order placed successfully', order });
@@ -250,7 +362,10 @@ router.put('/:id/status', adminMiddleware, async (req, res) => {
     const updatedOrder = result.rows[0];
     await logOrderStatus(updatedOrder.id, status);
 
-    // Notify customer of status change
+    if (status === 'delivered') {
+      await grantReferrerReward(updatedOrder.id);
+    }
+
     const statusMessages = {
       confirmed: 'Your order has been confirmed!',
       packing: 'Your order is being packed!',
@@ -284,7 +399,9 @@ async function getOrderWithItems(orderId) {
   if (orderResult.rows.length === 0) return null;
 
   const itemsResult = await query(`
-    SELECT oi.*, oi.product_id, p.name, p.image_emoji, p.image_url, p.unit
+    SELECT oi.*, oi.product_id, p.name, p.image_emoji, p.image_url,
+           p.price as original_price,
+           COALESCE(oi.unit_snapshot, p.unit) as unit
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     WHERE oi.order_id = $1

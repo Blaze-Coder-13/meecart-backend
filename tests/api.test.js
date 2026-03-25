@@ -19,19 +19,26 @@ jest.mock('../server/db', () => {
       db.pragma('journal_mode = WAL');
       db.pragma('foreign_keys = ON');
       db.exec(`
-        CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT UNIQUE NOT NULL, name TEXT, address TEXT, role TEXT DEFAULT 'customer', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT UNIQUE NOT NULL, name TEXT, address TEXT, password TEXT, referral_code TEXT, referred_by TEXT, role TEXT DEFAULT 'customer', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS otp_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, icon TEXT DEFAULT '🥦');
         CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, unit TEXT DEFAULT 'kg', stock INTEGER DEFAULT 100, category_id INTEGER, image_emoji TEXT DEFAULT '🥦', active INTEGER DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, status TEXT DEFAULT 'pending', total REAL NOT NULL, address TEXT NOT NULL, notes TEXT, payment_method TEXT DEFAULT 'cod', payment_status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, product_id INTEGER NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE NOT NULL, value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS promo_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, discount_type TEXT DEFAULT 'flat', discount_value REAL NOT NULL, min_order_value REAL DEFAULT 0, max_uses INTEGER DEFAULT 100, used_count INTEGER DEFAULT 0, active INTEGER DEFAULT 1, expires_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS flash_deals (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, deal_price REAL NOT NULL, deal_quantity REAL NOT NULL DEFAULT 1, deal_unit TEXT DEFAULT 'kg', max_per_order INTEGER DEFAULT 1, expires_at DATETIME NOT NULL, active INTEGER DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, status TEXT DEFAULT 'pending', subtotal REAL NOT NULL DEFAULT 0, delivery_charges REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL, address TEXT NOT NULL, notes TEXT, payment_method TEXT DEFAULT 'cod', payment_status TEXT DEFAULT 'pending', referral_reward_granted INTEGER DEFAULT 0, referral_discount_applied INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, product_id INTEGER NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, unit_snapshot TEXT, is_flash_deal INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS order_status_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
       `);
       // Seed test data
       const catExists = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
       if (!catExists) {
         db.prepare("INSERT INTO categories (name, icon) VALUES ('Greens','🥬')").run();
         db.prepare("INSERT INTO products (name, price, unit, stock, category_id, image_emoji) VALUES ('Spinach', 25, '250g', 50, 1, '🥬')").run();
-        db.prepare("INSERT INTO users (phone, name, role) VALUES ('9999999999', 'Admin', 'admin')").run();
+        db.prepare("INSERT INTO users (phone, name, role, referral_code) VALUES ('9999999999', 'Admin', 'admin', 'ADMIN1')").run();
+        db.prepare("INSERT INTO settings (key, value) VALUES ('free_delivery_above', '150')").run();
+        db.prepare("INSERT INTO settings (key, value) VALUES ('delivery_charges', '30')").run();
+        db.prepare("INSERT INTO settings (key, value) VALUES ('referral_discount', '30')").run();
       }
     }
     return db;
@@ -151,6 +158,38 @@ describe('Orders API', () => {
     expect(res.status).toBe(201);
     expect(res.body.order.id).toBeDefined();
     expect(res.body.order.total).toBe(50); // 25 * 2
+  });
+
+  test('POST /api/orders - persists checkout discount in saved order totals', async () => {
+    const { getDb } = require('../server/db');
+    const db = getDb();
+
+    db.prepare("UPDATE settings SET value = '100' WHERE key = 'free_delivery_above'").run();
+    db.prepare("UPDATE users SET referred_by = 'ADMIN1' WHERE phone = ?").run(testPhone);
+
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        items: [{ product_id: 1, quantity: 5 }],
+        address: '123 Test Street, Rayalaseema, AP 518001',
+        apply_referral_discount: true,
+        discount: 30,
+        final_total: 95,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.order.subtotal).toBe(125);
+    expect(res.body.order.discount).toBe(30);
+    expect(res.body.order.total).toBe(95);
+
+    const listRes = await request(app)
+      .get('/api/orders/my')
+      .set('Authorization', `Bearer ${customerToken}`);
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.body[0].discount).toBe(30);
+    expect(listRes.body[0].total).toBe(95);
   });
 
   test('POST /api/orders - short address fails', async () => {

@@ -1,14 +1,63 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../db');
+const { query, generateReferralCode } = require('../db');
 const { adminMiddleware } = require('../middleware/auth');
+
+function parseCsvRow(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result;
+}
 
 // GET /api/admin/users
 router.get('/users', adminMiddleware, async (req, res) => {
   try {
     const { page = 1 } = req.query;
+    const search = req.query.search?.trim();
     const limit = 20;
     const offset = (page - 1) * limit;
+    const filters = [`u.role = 'customer'`];
+    const params = [];
+
+    if (search) {
+      params.push(`%${search}%`);
+      filters.push(`(
+        u.phone ILIKE $${params.length}
+        OR COALESCE(u.name, '') ILIKE $${params.length}
+        OR COALESCE(u.address, '') ILIKE $${params.length}
+        OR COALESCE(u.referral_code, '') ILIKE $${params.length}
+        OR COALESCE(u.referred_by, '') ILIKE $${params.length}
+      )`);
+    }
+
+    params.push(limit, offset);
 
     const result = await query(`
       SELECT u.id, u.phone, u.name, u.address, u.role, u.referral_code, u.referred_by, u.created_at,
@@ -16,13 +65,16 @@ router.get('/users', adminMiddleware, async (req, res) => {
              COALESCE(SUM(o.total), 0) as total_spent
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
-      WHERE u.role = 'customer'
+      WHERE ${filters.join(' AND ')}
       GROUP BY u.id
       ORDER BY u.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
 
-    const countResult = await query("SELECT COUNT(*) as c FROM users WHERE role = 'customer'");
+    const countResult = await query(
+      `SELECT COUNT(*) as c FROM users u WHERE ${filters.join(' AND ')}`,
+      params.slice(0, search ? 1 : 0)
+    );
     res.json({ users: result.rows, total: parseInt(countResult.rows[0].c) });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -32,6 +84,13 @@ router.get('/users', adminMiddleware, async (req, res) => {
 // GET /api/admin/dashboard
 router.get('/dashboard', adminMiddleware, async (req, res) => {
   try {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Surrogate-Control': 'no-store',
+    });
+
     const [
       total_orders,
       pending_orders,
@@ -47,8 +106,8 @@ router.get('/dashboard', adminMiddleware, async (req, res) => {
       query('SELECT COUNT(*) as c FROM orders'),
       query("SELECT COUNT(*) as c FROM orders WHERE status = 'pending'"),
       query("SELECT COUNT(*) as c FROM orders WHERE status IN ('confirmed','packing','out_for_delivery')"),
-      query("SELECT COUNT(*) as c FROM orders WHERE status='delivered' AND DATE(updated_at)=CURRENT_DATE"),
-      query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status='delivered' AND DATE(updated_at)=CURRENT_DATE"),
+      query("SELECT COUNT(*) as c FROM orders WHERE status='delivered' AND ((updated_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date"),
+      query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status='delivered' AND ((updated_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date"),
       query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status='delivered'"),
       query("SELECT COUNT(*) as c FROM users WHERE role='customer'"),
       query('SELECT COUNT(*) as c FROM products WHERE active=1'),
@@ -72,6 +131,53 @@ router.get('/dashboard', adminMiddleware, async (req, res) => {
       recent_orders: recent_orders.rows,
       top_products: top_products.rows,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/import/customers', adminMiddleware, async (req, res) => {
+  const csv = req.body?.csv;
+  if (!csv || typeof csv !== 'string') {
+    return res.status(400).json({ error: 'CSV content is required' });
+  }
+
+  try {
+    const lines = csv.split(/\r?\n/).filter(Boolean);
+    if (lines.length <= 1) {
+      return res.status(400).json({ error: 'CSV file is empty' });
+    }
+
+    let imported = 0;
+
+    for (const rawLine of lines.slice(1)) {
+      const [phone, name, address, referral_code, referred_by] = parseCsvRow(rawLine);
+      if (!phone || !/^\d{10}$/.test(phone.trim())) continue;
+
+      const normalizedReferral = referral_code?.trim()?.toUpperCase() || generateReferralCode(phone.trim());
+      const normalizedReferredBy = referred_by?.trim()?.toUpperCase() || null;
+
+      await query(`
+        INSERT INTO users (phone, name, address, referral_code, referred_by, role)
+        VALUES ($1, $2, $3, $4, $5, 'customer')
+        ON CONFLICT (phone) DO UPDATE SET
+          name = EXCLUDED.name,
+          address = EXCLUDED.address,
+          referral_code = COALESCE(NULLIF(EXCLUDED.referral_code, ''), users.referral_code),
+          referred_by = COALESCE(NULLIF(EXCLUDED.referred_by, ''), users.referred_by)
+      `, [
+        phone.trim(),
+        name?.trim() || null,
+        address?.trim() || null,
+        normalizedReferral,
+        normalizedReferredBy,
+      ]);
+
+      imported += 1;
+    }
+
+    res.json({ imported });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

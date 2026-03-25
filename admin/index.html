@@ -805,10 +805,6 @@
               <input class="form-input" type="number" id="set_free_delivery_above" placeholder="150" />
             </div>
             <div class="form-group">
-              <label class="form-label">Delivery Time</label>
-              <input class="form-input" id="set_delivery_time" placeholder="7:00 AM - 12:00 PM" />
-            </div>
-            <div class="form-group">
               <label class="form-label">Delivery Days</label>
               <input class="form-input" id="set_delivery_days" placeholder="Monday to Saturday" />
             </div>
@@ -866,9 +862,12 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">All Customers</div>
-          <a href="/api/admin/export/customers" style="text-decoration:none">
+          <div class="filter-row">
+            <input class="form-input" id="customerSearch" placeholder="Search phone, name, address, referral" oninput="loadCustomers()" style="min-width:280px" />
+            <input type="file" id="customerImportFile" accept=".csv,text/csv" style="display:none" onchange="importCustomers(event)" />
+            <button class="action-btn" onclick="document.getElementById('customerImportFile').click()">📤 Import CSV</button>
             <button class="action-btn primary" onclick="exportCSV()">📥 Export CSV</button>
-          </a>
+          </div>
         </div>
         <div id="customersTable"><div class="loading">Loading…</div></div>
       </div>
@@ -1059,7 +1058,7 @@
 
   async function pollForNewOrders() {
     try {
-      const res = await fetch(`${API}/api/admin/dashboard`, { headers: headers() });
+      const res = await fetch(`${API}/api/admin/dashboard`, { headers: headers(), cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       const latestOrder = data.recent_orders?.[0];
@@ -1090,7 +1089,7 @@
 
   // DASHBOARD
   async function loadDashboard() {
-    const res = await fetch(`${API}/api/admin/dashboard`, { headers: headers() });
+    const res = await fetch(`${API}/api/admin/dashboard`, { headers: headers(), cache: 'no-store' });
     const data = await res.json();
 
     document.getElementById('statsGrid').innerHTML = `
@@ -1144,7 +1143,10 @@
             <tr>
               <td><strong>#${o.id}</strong></td>
               <td>${o.customer_name || o.phone}</td>
-              <td><strong>₹${o.total}</strong></td>
+              <td>
+                <strong>₹${o.total}</strong>
+                ${Number(o.discount || 0) > 0 ? `<div style="font-size:11px;color:var(--green);font-weight:700;margin-top:4px">Saved ₹${o.discount}</div>` : ''}
+              </td>
               <td><span class="status-badge status-${o.status}">${o.status.replace('_',' ')}</span></td>
               <td>${new Date(o.created_at).toLocaleDateString('en-IN')}</td>
             </tr>`).join('')}
@@ -1176,7 +1178,10 @@
 <td>${o.customer_name || ''}<br><span style="color:var(--muted)">${o.phone}</span></td>
 <td style="max-width:150px;font-size:12px">${o.address || '—'}</td>
 <td>${o.item_count}</td>
-              <td><strong>₹${o.total}</strong></td>
+              <td>
+                <strong>₹${o.total}</strong>
+                ${Number(o.discount || 0) > 0 ? `<div style="font-size:11px;color:var(--green);font-weight:700;margin-top:4px">Saved ₹${o.discount}</div>` : ''}
+              </td>
               <td>
                 <select class="status-select" onchange="updateStatus(${o.id}, this.value)">
                   ${['pending','confirmed','packing','out_for_delivery','delivered','cancelled'].map(s =>
@@ -1197,6 +1202,10 @@
       headers: headers(),
       body: JSON.stringify({ status })
     });
+    if (res.ok) {
+      loadOrders();
+      loadDashboard();
+    }
     if (res.ok) showToast(`Order #${orderId} → ${status.replace(/_/g,' ')}`);
   }
 
@@ -1297,7 +1306,7 @@
             </td>
             <td>₹${i.price}</td>
             <td>₹${i.price}</td>
-            <td>${i.quantity} ${i.unit}</td>
+            <td>${i.quantity} x ${i.unit}</td>
             <td>₹${(i.price * i.quantity).toFixed(0)}</td>
           </tr>
         `).join('')}
@@ -1307,7 +1316,7 @@
 
   <div class="total-section">
     <div class="total-row"><span>Subtotal</span><span>₹${o.subtotal || o.total}</span></div>
-    <div class="total-row"><span>Discount Amount</span><span>₹${o.discount || 0}</span></div>
+    <div class="total-row"><span>Discount Amount</span><span>${Number(o.discount || 0) > 0 ? '- ₹' + o.discount : '₹0'}</span></div>
     <div class="total-row"><span>Delivery Charges</span><span>${(o.delivery_charges || 0) === 0 ? '₹0 (Free)' : '₹' + o.delivery_charges}</span></div>
     <div class="total-row final"><span>Total Amount</span><span>₹${o.total}</span></div>
   </div>
@@ -1791,6 +1800,37 @@ async function editCategory(id, name, icon, imageUrl) {
     }
   }
 
+  async function importCustomers(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    try {
+      const csv = await file.text();
+      const res = await fetch(`${API}/api/admin/import/customers`, {
+        method: 'POST',
+        headers: {
+          ...headers(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ csv })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || 'Import failed');
+        event.target.value = '';
+        return;
+      }
+
+      showToast(`Imported ${data.imported || 0} customers`);
+      event.target.value = '';
+      loadCustomers();
+    } catch {
+      showToast('Import failed');
+      event.target.value = '';
+    }
+  }
+
   // ANNOUNCEMENTS
   async function sendBroadcast() {
     const title = document.getElementById('notifTitle').value.trim();
@@ -1851,7 +1891,7 @@ async function editCategory(id, name, icon, imageUrl) {
     const res = await fetch(`${API}/api/admin/settings`, { headers: headers() });
     const data = await res.json();
 
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);
       if (el && data[key]) el.value = data[key];
@@ -1880,7 +1920,7 @@ async function editCategory(id, name, icon, imageUrl) {
   }
 
   async function saveSettings() {
-    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_time','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
+    const fields = ['min_order_value','delivery_charges','free_delivery_above','delivery_days','delivery_message','referral_discount','app_name','app_logo_url','app_contact_email','app_contact_phone','app_contact_address'];
     const updates = {};
     fields.forEach(key => {
       const el = document.getElementById(`set_${key}`);
@@ -1899,23 +1939,26 @@ async function editCategory(id, name, icon, imageUrl) {
 
   // CUSTOMERS
   async function loadCustomers() {
-    const res = await fetch(`${API}/api/admin/users`, { headers: headers() });
+    const search = document.getElementById('customerSearch')?.value?.trim() || '';
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    const res = await fetch(`${API}/api/admin/users${query}`, { headers: headers() });
     const data = await res.json();
 
     document.getElementById('customersTable').innerHTML = `
       <table>
         <thead><tr>
-          <th>Phone</th><th>Name</th><th>Referral Code</th><th>Referred By</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
+          <th>Phone</th><th>Name</th><th>Address</th><th>Referral Code</th><th>Referred By</th><th>Orders</th><th>Total Spent</th><th>Joined</th>
         </tr></thead>
         <tbody>
           ${data.users.map(u => `
             <tr>
               <td><strong>${u.phone}</strong></td>
 <td>${u.name || '—'}</td>
+<td style="max-width:220px">${u.address || '—'}</td>
 <td><code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:11px">${u.referral_code || '—'}</code></td>
 <td>${u.referred_by ? `<span style="background:#d8f3dc;padding:2px 6px;border-radius:4px;font-size:11px;color:#2d6a4f">${u.referred_by}</span>` : '—'}</td>
 <td>${u.order_count}</td>
-              <td>₹${u.total_spent}</td>
+              <td>&#8377;${u.total_spent}</td>
               <td>${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
             </tr>`).join('')}
         </tbody>

@@ -241,6 +241,7 @@
             </div>
             <div style="text-align:right">
               <div class="order-total">₹${o.total}</div>
+              ${Number(o.discount || 0) > 0 ? `<div style="font-size:12px;color:var(--green);margin-top:4px;font-weight:700">Saved ₹${o.discount}</div>` : ''}
               <div style="font-size:12px;color:var(--muted);margin-top:4px">💵 Cash on Delivery</div>
             </div>
           </div>

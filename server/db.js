@@ -165,6 +165,26 @@ async function initSchema() {
     ADD COLUMN IF NOT EXISTS image_url TEXT
   `);
 
+  await db.query(`
+    ALTER TABLE order_items
+    ADD COLUMN IF NOT EXISTS unit_snapshot TEXT
+  `);
+
+  await db.query(`
+    ALTER TABLE order_items
+    ADD COLUMN IF NOT EXISTS is_flash_deal INTEGER DEFAULT 0
+  `);
+
+  await db.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS referral_reward_granted INTEGER DEFAULT 0
+  `);
+
+  await db.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS referral_discount_applied INTEGER DEFAULT 0
+  `);
+
   await seedData();
 }
 
@@ -236,7 +256,6 @@ async function seedSettings() {
     ['delivery_charges', '30'],
     ['free_delivery_above', '150'],
     ['delivery_message', 'Add ₹{amount} more for free delivery!'],
-    ['delivery_time', '7:00 AM - 12:00 PM'],
     ['delivery_days', 'Monday to Saturday'],
     ['app_contact_email', 'support@meecart.com'],
     ['app_contact_phone', '+91 9999999999'],
@@ -251,7 +270,9 @@ async function seedSettings() {
       'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
       [key, value]
     );
+
   }
+  await db.query("DELETE FROM settings WHERE key = 'delivery_time'");
 }
 
 function generateReferralCode(phone) {
