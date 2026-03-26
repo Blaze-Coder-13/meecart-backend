@@ -333,6 +333,7 @@ router.get('/promos', adminMiddleware, async (req, res) => {
   }
 });
 
+// Customer-facing promo list used by the app's dedicated offers page.
 router.get('/promos/public', async (req, res) => {
   try {
     const result = await query(`
