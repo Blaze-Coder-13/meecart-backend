@@ -342,6 +342,7 @@ router.get('/promos/public', async (req, res) => {
       WHERE active = 1
         AND (expires_at IS NULL OR expires_at > NOW())
         AND used_count < max_uses
+        AND code NOT LIKE 'REF%BONUS'
       ORDER BY min_order_value ASC, created_at DESC
     `);
     res.json(result.rows);
