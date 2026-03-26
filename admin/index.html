@@ -938,8 +938,6 @@
   let adminOrderPollHandle = null;
   let notificationPermissionAsked = false;
   let deferredInstallPrompt = null;
-  let currentOrdersPage = 1;
-  const ordersPerPage = 20;
 
   if (!token || !user || user.role !== 'admin') {
     window.location.href = '/login.html';
