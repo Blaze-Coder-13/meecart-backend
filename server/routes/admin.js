@@ -333,6 +333,22 @@ router.get('/promos', adminMiddleware, async (req, res) => {
   }
 });
 
+router.get('/promos/public', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT code, discount_type, discount_value, min_order_value, expires_at
+      FROM promo_codes
+      WHERE active = 1
+        AND (expires_at IS NULL OR expires_at > NOW())
+        AND used_count < max_uses
+      ORDER BY min_order_value ASC, created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/promos', adminMiddleware, async (req, res) => {
   const { code, discount_type, discount_value, min_order_value, max_uses, expires_at } = req.body;
   if (!code || !discount_value) {
