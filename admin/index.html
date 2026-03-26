@@ -1460,7 +1460,7 @@
     <table>
       <thead>
         <tr>
-          <th>Product ID</th>
+          <th>Sr. No.</th>
           <th>Name</th>
           <th>MRP</th>
           <th>Price</th>
@@ -1469,9 +1469,9 @@
         </tr>
       </thead>
       <tbody>
-        ${o.items.map(i => `
+        ${o.items.map((i, idx) => `
           <tr>
-            <td>${i.product_id}</td>
+            <td>${idx + 1}</td>
             <td>
               ${i.image_url
                 ? `<img src="${i.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px" onerror="this.style.display='none'">`
