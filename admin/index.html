@@ -915,7 +915,7 @@
         <div class="panel-header">
           <div class="panel-title">All Customers</div>
           <div class="filter-row">
-            <input class="form-input" id="customerSearch" placeholder="Search phone, name, address, referral" oninput="loadCustomers()" style="min-width:280px" />
+            <input class="form-input" id="customerSearch" placeholder="Search phone, name, address, referral" oninput="resetCustomerPagination()" style="min-width:280px" />
             <input type="file" id="customerImportFile" accept=".csv,text/csv" style="display:none" onchange="importCustomers(event)" />
             <button class="action-btn" onclick="document.getElementById('customerImportFile').click()">📤 Import CSV</button>
             <button class="action-btn primary" onclick="exportCSV()">📥 Export CSV</button>
@@ -946,6 +946,74 @@
   }
 
   let currentSection = 'dashboard';
+  let currentOrdersPage = 1;
+  let currentProductsPage = 1;
+  let currentCustomersPage = 1;
+  const ordersPerPage = 20;
+  const productsPerPage = 20;
+  const customersPerPage = 20;
+
+  function getPageNumbers(totalPages, currentPage) {
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    return Array.from(pages)
+      .filter(page => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+  }
+
+  function renderPagination(totalItems, totalPages, currentPage, updateFnName, itemLabel) {
+    if (totalPages <= 1) return '';
+
+    const pageButtons = getPageNumbers(totalPages, currentPage).map(page => `
+      <button
+        class="page-btn ${page === currentPage ? 'active' : ''}"
+        onclick="${updateFnName}(${page})"
+      >${page}</button>
+    `).join('');
+
+    const startItem = ((currentPage - 1) * (itemLabel === 'orders' ? ordersPerPage : itemLabel === 'products' ? productsPerPage : customersPerPage)) + 1;
+    const showPerPage = itemLabel === 'orders' ? ordersPerPage : itemLabel === 'products' ? productsPerPage : customersPerPage;
+    const endItem = Math.min(currentPage * showPerPage, totalItems);
+
+    return `
+      <div class="pagination">
+        <div class="pagination-info">
+          Showing ${startItem}-${endItem} of ${totalItems} ${itemLabel}
+        </div>
+        <div class="pagination-controls">
+          <button class="page-btn" onclick="${updateFnName}(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+          ${pageButtons}
+          <button class="page-btn" onclick="${updateFnName}(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function setProductsPage(page) {
+    if (page < 1 || page === currentProductsPage) return;
+    currentProductsPage = page;
+    loadProducts();
+  }
+
+  function setCustomersPage(page) {
+    if (page < 1 || page === currentCustomersPage) return;
+    currentCustomersPage = page;
+    loadCustomers();
+  }
+
+  function resetOrderPagination() {
+    currentOrdersPage = 1;
+    loadOrders();
+  }
+
+  function resetCustomerPagination() {
+    currentCustomersPage = 1;
+    loadCustomers();
+  }
+
+  function resetProductPagination() {
+    currentProductsPage = 1;
+    loadProducts();
+  }
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -1450,8 +1518,33 @@
       catSelect.innerHTML = cats.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
     }
 
-    const res = await fetch(`${API}/api/products`, { headers: headers() });
-    const products = await res.json();
+    const params = new URLSearchParams();
+    params.set('page', currentProductsPage);
+    params.set('limit', productsPerPage);
+    const res = await fetch(`${API}/api/products?${params.toString()}`, { headers: headers() });
+    const data = await res.json();
+
+    let products = [];
+    let total = 0;
+
+    if (Array.isArray(data)) {
+      products = data;
+      total = data.length;
+    } else {
+      products = data.products || [];
+      total = Number(data.total || 0);
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / productsPerPage));
+    if (currentProductsPage > totalPages) {
+      currentProductsPage = totalPages;
+      return loadProducts();
+    }
+
+    if (!products.length) {
+      document.getElementById('productsTable').innerHTML = '<div class="loading">No products found.</div>';
+      return;
+    }
 
     document.getElementById('productsTable').innerHTML = `
       <table>
@@ -1481,7 +1574,8 @@
               </td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>
+      ${renderPagination(total, totalPages, currentProductsPage, 'setProductsPage', 'products')}`;
   }
 
   async function addProduct() {
@@ -2049,9 +2143,26 @@ async function editCategory(id, name, icon, imageUrl) {
   // CUSTOMERS
   async function loadCustomers() {
     const search = document.getElementById('customerSearch')?.value?.trim() || '';
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    const res = await fetch(`${API}/api/admin/users${query}`, { headers: headers() });
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    params.set('page', currentCustomersPage);
+    const url = `${API}/api/admin/users?${params.toString()}`;
+    const res = await fetch(url, { headers: headers() });
     const data = await res.json();
+
+    const customers = Array.isArray(data) ? data : (data.users || []);
+    const totalCustomers = data.total ? Number(data.total) : customers.length;
+
+    const totalPages = Math.max(1, Math.ceil(totalCustomers / customersPerPage));
+    if (currentCustomersPage > totalPages) {
+      currentCustomersPage = totalPages;
+      return loadCustomers();
+    }
+
+    if (!customers.length) {
+      document.getElementById('customersTable').innerHTML = '<div class="loading">No customers found.</div>';
+      return;
+    }
 
     document.getElementById('customersTable').innerHTML = `
       <table>
@@ -2071,7 +2182,8 @@ async function editCategory(id, name, icon, imageUrl) {
               <td>${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>
+      ${renderPagination(totalCustomers, totalPages, currentCustomersPage, 'setCustomersPage', 'customers')}`;
   }
 
   // Init

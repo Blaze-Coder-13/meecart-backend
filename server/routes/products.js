@@ -6,27 +6,42 @@ const { adminMiddleware } = require('../middleware/auth');
 // GET /api/products
 router.get('/', async (req, res) => {
   try {
-    const { category, search } = req.query;
-    let text = `
-      SELECT p.*, c.name as category_name, c.icon as category_icon
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      WHERE p.active = 1 AND (c.active = 1 OR c.active IS NULL)
-    `;
+    const { category, search, page = 0, limit = 0 } = req.query;
+    const pageNum = Number(page || 0);
+    const pageLimit = Number(limit || 0);
+
+    const whereClauses = ['p.active = 1', '(c.active = 1 OR c.active IS NULL)'];
     const params = [];
 
     if (category) {
       params.push(category);
-      text += ` AND p.category_id = $${params.length}`;
+      whereClauses.push(`p.category_id = $${params.length}`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      text += ` AND (p.name ILIKE $${params.length} OR p.description ILIKE $${params.length})`;
+      whereClauses.push(`(p.name ILIKE $${params.length} OR p.description ILIKE $${params.length})`);
     }
 
-    text += ' ORDER BY c.name, p.name';
-    const result = await query(text, params);
+    const whereSQL = whereClauses.join(' AND ');
+    const baseQuery = `
+      SELECT p.*, c.name as category_name, c.icon as category_icon
+      FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
+      WHERE ${whereSQL}
+      ORDER BY c.name, p.name
+    `;
+
+    if (pageNum > 0 && pageLimit > 0) {
+      const totalResult = await query(`SELECT COUNT(*) as c FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE ${whereSQL}`, params);
+      const total = Number(totalResult.rows[0]?.c || 0);
+      const offset = (pageNum - 1) * pageLimit;
+      const pagedParams = [...params, pageLimit, offset];
+      const rows = await query(`${baseQuery} LIMIT $${pagedParams.length - 1} OFFSET $${pagedParams.length}`, pagedParams);
+      return res.json({ products: rows.rows, total });
+    }
+
+    const result = await query(baseQuery, params);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
