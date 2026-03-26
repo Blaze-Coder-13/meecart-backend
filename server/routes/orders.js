@@ -114,6 +114,19 @@ router.post('/', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Valid delivery address required' });
   }
 
+  const idempotency_key = req.body.idempotency_key ? String(req.body.idempotency_key).trim() : '';
+
+  if (idempotency_key) {
+    const existingOrder = await query(
+      'SELECT id FROM orders WHERE user_id = $1 AND idempotency_key = $2',
+      [req.user.id, idempotency_key]
+    );
+    if (existingOrder.rows.length > 0) {
+      const order = await getOrderWithItems(existingOrder.rows[0].id);
+      return res.status(200).json({ message: 'Order already placed', order });
+    }
+  }
+
   try {
     const settingsResult = await query('SELECT key, value FROM settings');
     const settings = {};
@@ -229,9 +242,9 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const orderResult = await query(`
-      INSERT INTO orders (user_id, subtotal, delivery_charges, discount, total, address, notes, payment_method, status, referral_discount_applied)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'cod', 'pending', $8) RETURNING *
-    `, [req.user.id, subtotal, deliveryCharges, finalDiscount, finalTotal, address.trim(), notes || null, referralDiscountApplied]);
+      INSERT INTO orders (user_id, subtotal, delivery_charges, discount, total, address, notes, payment_method, status, referral_discount_applied, idempotency_key)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'cod', 'pending', $8, $9) RETURNING *
+    `, [req.user.id, subtotal, deliveryCharges, finalDiscount, finalTotal, address.trim(), notes || null, referralDiscountApplied, idempotency_key]);
 
     const orderId = orderResult.rows[0].id;
 

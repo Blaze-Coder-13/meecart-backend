@@ -185,6 +185,15 @@ async function initSchema() {
     ADD COLUMN IF NOT EXISTS referral_discount_applied INTEGER DEFAULT 0
   `);
 
+  await db.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS idempotency_key TEXT
+  `);
+
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency_key ON orders (idempotency_key)
+  `);
+
   await seedData();
 }
 
