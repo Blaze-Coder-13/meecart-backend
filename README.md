@@ -148,19 +148,28 @@ PORT=3000
 JWT_SECRET=your-very-long-random-secret-key-here
 ```
 
-### Add Real SMS (Twilio)
-In `server/routes/auth.js`, replace the `sendSMS` function:
-```js
-const twilio = require('twilio');
-const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+### Add Real SMS (BulkSMSApps)
+This project supports BulkSMSApps via env vars in `server/utils/sms.js`.
 
-async function sendSMS(phone, code) {
-  await client.messages.create({
-    to: `+91${phone}`,
-    from: process.env.TWILIO_FROM,
-    body: `Your Meecart OTP: ${code}. Valid for 5 minutes.`
-  });
-}
+Set these in production (Railway/Render/VPS env):
+```env
+# Optional: if not set, it auto-uses BulkSMSApps when its env vars exist
+SMS_PROVIDER=bulksmsapps
+BULKSMSAPPS_API_KEY=your_api_key_here
+
+# Full URL template (put your exact params here). Supported placeholders:
+# {apiKey} {phone} {code} {purpose} {message} {senderId} {entityId} {templateId}
+BULKSMSAPPS_URL_TEMPLATE=http://www.bulksmsapps.com/api/apismsv2.aspx?apikey={apiKey}&sender={senderId}&number={phone}&message={message}
+
+# Optional (DLT)
+BULKSMSAPPS_SENDER_ID=XXXXXX
+# If your panel/docs gives EntityId/TemplateId, you can also pass them by adding to the URL template.
+# BULKSMSAPPS_ENTITY_ID=XXXXXXXXXXXXXXX
+# BULKSMSAPPS_TEMPLATE_ID_SIGNUP=XXXXXXXXXX
+# BULKSMSAPPS_TEMPLATE_ID_FORGOT=XXXXXXXXXX
+
+# Optional (must match your approved DLT text)
+BULKSMSAPPS_MESSAGE_TEMPLATE=Your OTP is {code}. Valid for 5 minutes.
 ```
 
 ---

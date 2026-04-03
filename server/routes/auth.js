@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { query, generateReferralCode } = require('../db');
 const { generateToken, authMiddleware } = require('../middleware/auth');
+const { sendOtpSms } = require('../utils/sms');
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password + 'meecart_salt').digest('hex');
@@ -137,14 +138,17 @@ router.post('/send-otp', async (req, res) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await query('UPDATE otp_codes SET used = 1 WHERE phone = $1 AND used = 0 AND purpose = $2', [phone, purpose]);
     await query('INSERT INTO otp_codes (phone, code, purpose, expires_at) VALUES ($1, $2, $3, $4)', [phone, code, purpose, expiresAt]);
-    const smsResult = await sendOTPViaFast2SMS(phone, code, purpose);
+    const smsResult = await sendOtpSms(phone, code, purpose);
+    console.log(
+      `OTP SMS provider=${smsResult?.provider || 'unknown'} ok=${Boolean(smsResult?.ok)} skipped=${Boolean(smsResult?.skipped)}`
+    );
     if (!smsResult?.ok) {
       console.log(`OTP fallback active for ${phone} [${purpose}] because SMS failed: ${smsResult?.error || 'Unknown SMS error'}`);
       return res.json({
         message: 'OTP generated successfully',
         phone,
         fallback: true,
-        details: smsResult?.error || 'Fast2SMS rejected the request',
+        details: smsResult?.error || 'SMS provider rejected the request',
       });
     }
     res.json({ message: 'OTP sent successfully', phone });
