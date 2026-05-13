@@ -372,13 +372,29 @@ router.get('/', adminMiddleware, async (req, res) => {
 
     let text = `
       SELECT o.*, u.phone, u.name as customer_name, u.address as customer_address,
-             COUNT(oi.id) as item_count
+             COUNT(oi.id) as item_count,
+             EXISTS (
+               SELECT 1
+               FROM order_status_logs osl
+               WHERE osl.order_id = o.id
+                 AND osl.status = 'cancelled'
+                 AND osl.title = 'Cancelled by Customer'
+             ) as customer_cancelled
       FROM orders o
       JOIN users u ON o.user_id = u.id
       LEFT JOIN order_items oi ON o.id = oi.order_id
     `;
 
-    if (status) {
+    if (status === 'customer_cancelled') {
+      text += ` WHERE o.status = 'cancelled'
+        AND EXISTS (
+          SELECT 1
+          FROM order_status_logs osl
+          WHERE osl.order_id = o.id
+            AND osl.status = 'cancelled'
+            AND osl.title = 'Cancelled by Customer'
+        )`;
+    } else if (status) {
       params.push(status);
       text += ` WHERE o.status = $${params.length}`;
     }
@@ -388,7 +404,22 @@ router.get('/', adminMiddleware, async (req, res) => {
     text += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
 
     const result = await query(text, params);
-    const countResult = await query(`SELECT COUNT(*) as c FROM orders ${status ? 'WHERE status = $1' : ''}`, status ? [status] : []);
+    let countText = 'SELECT COUNT(*) as c FROM orders';
+    let countParams = [];
+    if (status === 'customer_cancelled') {
+      countText += ` WHERE status = 'cancelled'
+        AND EXISTS (
+          SELECT 1
+          FROM order_status_logs osl
+          WHERE osl.order_id = orders.id
+            AND osl.status = 'cancelled'
+            AND osl.title = 'Cancelled by Customer'
+        )`;
+    } else if (status) {
+      countText += ' WHERE status = $1';
+      countParams = [status];
+    }
+    const countResult = await query(countText, countParams);
 
     res.json({
       orders: result.rows,

@@ -173,6 +173,7 @@
     .status-out_for_delivery { background: #ffedd5; color: #9a3412; }
     .status-delivered { background: var(--green-pale); color: var(--green); }
     .status-cancelled { background: #fee2e2; color: #991b1b; }
+    .status-customer_cancelled { background: #fce7f3; color: #9d174d; }
 
     .action-btn {
       padding: 6px 12px;
@@ -580,6 +581,7 @@
               <option value="out_for_delivery">Out for Delivery</option>
               <option value="delivered">Delivered</option>
               <option value="cancelled">Cancelled</option>
+              <option value="customer_cancelled">Cancelled by Customer</option>
             </select>
           </div>
         </div>
@@ -1013,6 +1015,31 @@
     loadProducts();
   }
 
+  function isCustomerCancelledOrder(order) {
+    if (order?.status !== 'cancelled') return false;
+    if (order.customer_cancelled === true || order.customer_cancelled === 1 || order.customer_cancelled === '1') return true;
+    return Array.isArray(order.updates)
+      && order.updates.some(update => update.status === 'cancelled' && update.title === 'Cancelled by Customer');
+  }
+
+  function getOrderStatusKey(order) {
+    return isCustomerCancelledOrder(order) ? 'customer_cancelled' : order.status;
+  }
+
+  function formatOrderStatus(orderOrStatus) {
+    const status = typeof orderOrStatus === 'string' ? orderOrStatus : getOrderStatusKey(orderOrStatus);
+    const labels = {
+      pending: 'Pending',
+      confirmed: 'Confirmed',
+      packing: 'Packing',
+      out_for_delivery: 'Out for Delivery',
+      delivered: 'Delivered',
+      cancelled: 'Cancelled',
+      customer_cancelled: 'Cancelled by Customer',
+    };
+    return labels[status] || String(status || '').replace(/_/g, ' ');
+  }
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).catch(() => {});
@@ -1357,9 +1384,10 @@
                 ${Number(o.discount || 0) > 0 ? `<div style="font-size:11px;color:var(--green);font-weight:700;margin-top:4px">Saved ₹${o.discount}</div>` : ''}
               </td>
               <td>
+                <span class="status-badge status-${getOrderStatusKey(o)}" style="margin-bottom:6px;display:inline-block">${formatOrderStatus(o)}</span>
                 <select class="status-select" onchange="updateStatus(${o.id}, this.value)">
                   ${['pending','confirmed','packing','out_for_delivery','delivered','cancelled'].map(s =>
-                    `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.replace(/_/g,' ')}</option>`
+                    `<option value="${s}" ${o.status === s ? 'selected' : ''}>${formatOrderStatus(s)}</option>`
                   ).join('')}
                 </select>
               </td>
@@ -1450,7 +1478,7 @@
       <div class="section-title">Order Details</div>
       <div class="info-row"><span class="info-label">Order Date</span><span class="info-value">${new Date(o.created_at).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'})}</span></div>
       <div class="info-row"><span class="info-label">Payment</span><span class="info-value">Cash on Delivery</span></div>
-      <div class="info-row"><span class="info-label">Status</span><span class="info-value"><span class="status-badge">${o.status.replace(/_/g,' ')}</span></span></div>
+      <div class="info-row"><span class="info-label">Status</span><span class="info-value"><span class="status-badge status-${getOrderStatusKey(o)}">${formatOrderStatus(o)}</span></span></div>
       ${o.notes ? `<div class="info-row"><span class="info-label">Instructions</span><span class="info-value">${o.notes}</span></div>` : ''}
     </div>
   </div>
