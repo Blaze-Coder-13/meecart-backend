@@ -170,6 +170,10 @@ BULKSMSAPPS_SENDER_ID=XXXXXX
 
 # Optional (must match your approved DLT text)
 BULKSMSAPPS_MESSAGE_TEMPLATE=Your OTP is {code}. Valid for 5 minutes.
+
+# Optional (different messages per OTP purpose)
+# BULKSMSAPPS_MESSAGE_TEMPLATE_SIGNUP={code} Use this otp to register in Meecart
+# BULKSMSAPPS_MESSAGE_TEMPLATE_FORGOT={code} USE this OTP to reset password in Mecart
 ```
 
 ---

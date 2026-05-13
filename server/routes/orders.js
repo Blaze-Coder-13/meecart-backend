@@ -13,9 +13,12 @@ const STATUS_MESSAGES = {
   cancelled: { title: 'Order Cancelled', message: 'Your order has been cancelled.' },
 };
 
-async function logOrderStatus(orderId, status) {
-  const entry = STATUS_MESSAGES[status];
-  if (!entry) return;
+const CUSTOMER_CANCEL_STATUSES = ['pending', 'confirmed'];
+
+async function logOrderStatus(orderId, status, override = {}) {
+  const baseEntry = STATUS_MESSAGES[status];
+  if (!baseEntry) return;
+  const entry = { ...baseEntry, ...override };
   await query(
     'INSERT INTO order_status_logs (order_id, status, title, message) VALUES ($1, $2, $3, $4)',
     [orderId, status, entry.title, entry.message]
@@ -296,6 +299,65 @@ router.get('/my/:id', authMiddleware, async (req, res) => {
     const order = await getOrderWithItems(req.params.id);
     res.json(order);
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/orders/my/:id/cancel
+router.patch('/my/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const orderResult = await query(
+      'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+    if (!CUSTOMER_CANCEL_STATUSES.includes(order.status)) {
+      return res.status(400).json({
+        error: 'This order cannot be cancelled now. Please contact support.',
+      });
+    }
+
+    const reason = String(req.body?.reason || 'Cancelled by customer').trim().slice(0, 160);
+    const updatedResult = await query(
+      `UPDATE orders
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
+       RETURNING *`,
+      [req.params.id, req.user.id, CUSTOMER_CANCEL_STATUSES]
+    );
+
+    if (updatedResult.rows.length === 0) {
+      return res.status(409).json({
+        error: 'Order status changed. Please refresh and try again.',
+      });
+    }
+
+    const updatedOrder = updatedResult.rows[0];
+    await logOrderStatus(updatedOrder.id, 'cancelled', {
+      title: 'Cancelled by Customer',
+      message: reason,
+    });
+
+    sendPushToAdmins(
+      'Order Cancelled',
+      `Order #${updatedOrder.id} was cancelled by ${req.user.phone}`
+    );
+
+    sendPushToUser(
+      updatedOrder.user_id,
+      'Order Cancelled',
+      'Your order has been cancelled successfully.'
+    );
+
+    const fullOrder = await getOrderWithItems(updatedOrder.id);
+    res.json({ message: 'Order cancelled successfully', order: fullOrder });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });

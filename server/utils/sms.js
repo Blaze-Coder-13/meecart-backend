@@ -18,6 +18,13 @@ function getBulkSmsAppsTemplateId(purpose) {
   return process.env.BULKSMSAPPS_TEMPLATE_ID || '';
 }
 
+function getBulkSmsAppsMessageTemplate(purpose) {
+  const p = String(purpose || '').toLowerCase();
+  if (p === 'signup' && process.env.BULKSMSAPPS_MESSAGE_TEMPLATE_SIGNUP) return process.env.BULKSMSAPPS_MESSAGE_TEMPLATE_SIGNUP;
+  if (p === 'forgot' && process.env.BULKSMSAPPS_MESSAGE_TEMPLATE_FORGOT) return process.env.BULKSMSAPPS_MESSAGE_TEMPLATE_FORGOT;
+  return process.env.BULKSMSAPPS_MESSAGE_TEMPLATE || '';
+}
+
 function parseLikelyJson(raw) {
   if (!raw) return null;
   try {
@@ -116,7 +123,7 @@ async function sendOtpViaBulkSMSApps(phone, code, purpose) {
   const templateId = getBulkSmsAppsTemplateId(purpose);
   const senderId = process.env.BULKSMSAPPS_SENDER_ID || '';
   const entityId = process.env.BULKSMSAPPS_ENTITY_ID || '';
-  const messageTemplate = process.env.BULKSMSAPPS_MESSAGE_TEMPLATE || 'Your OTP is {code}.';
+  const messageTemplate = getBulkSmsAppsMessageTemplate(purpose) || 'Your OTP is {code}.';
   const message = buildMessage(messageTemplate, { code, purpose });
 
   const vars = {
